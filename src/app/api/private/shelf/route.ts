@@ -1,5 +1,6 @@
 import type { Assignment, ShelfCard } from "@/lib/types";
 import { apiError, privateContext, privateJson } from "@/lib/private-api";
+import { shelfStartBy } from "@/lib/private-planning";
 
 export async function GET() {
   const context = await privateContext();
@@ -36,13 +37,12 @@ export async function GET() {
     };
     return {
       assignment,
-      // Person C will replace this temporary cue with the real date rule.
-      startByAt: null,
-      startByReason: assignment.dueAt === null
-        ? "No Canvas due date"
-        : new Date(assignment.dueAt) < new Date()
-          ? "Start when you can"
-          : "Start date suggestion coming soon",
+      ...shelfStartBy(
+        assignment.dueAt,
+        assignment.timeZone,
+        row.effort_min_minutes ?? null,
+        row.effort_max_minutes ?? null,
+      ),
       stepsDone: assignmentSteps.filter((step) => step.done).length,
       stepsTotal: assignmentSteps.length,
     };

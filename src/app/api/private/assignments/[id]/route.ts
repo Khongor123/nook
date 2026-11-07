@@ -1,6 +1,7 @@
 import { z } from "zod";
-import type { AssignmentDetail, Step, Thought, Checkpoint } from "@/lib/types";
+import type { PrivateAssignmentDetail, Step, Thought, Checkpoint } from "@/lib/types";
 import { apiError, privateContext, privateJson } from "@/lib/private-api";
+import { getWelcomeBack } from "@/lib/planning/welcome-back";
 
 export async function GET(
   _request: Request,
@@ -32,7 +33,7 @@ export async function GET(
     return apiError(500, "LOAD_FAILED", "Could not load saved work", true);
   }
 
-  const detail: AssignmentDetail = {
+  const detail: PrivateAssignmentDetail = {
     assignment: {
       id: row.id, userId: row.user_id, canvasCourseId: row.canvas_course_id,
       canvasAssignmentId: row.canvas_assignment_id, courseName: row.course_name,
@@ -57,6 +58,11 @@ export async function GET(
           createdAt: checkpointResult.data[0].created_at,
         } satisfies Checkpoint
       : null,
+    effortEstimate: row.effort_min_minutes != null && row.effort_max_minutes != null
+      ? { minMinutes: row.effort_min_minutes, maxMinutes: row.effort_max_minutes }
+      : null,
+    welcomeBack: { message: "", nextAction: "", ideaText: null },
   };
+  detail.welcomeBack = getWelcomeBack(detail.latestCheckpoint, detail.thoughts, detail.steps);
   return privateJson(detail);
 }
