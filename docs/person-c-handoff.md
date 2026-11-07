@@ -1,23 +1,83 @@
-# Person C handoff
+# Person C: demo reliability handoff
 
-Implemented on `c-planning`. No pages or API routes were changed. A integrates the
-functions into authenticated routes; B2 renders their results. Existing shared
-types and fixtures remain unchanged.
+Audited against all three pages of the Person C AI Planning Demo PDF and updated
+main `e685415` (PRs #1–#3 merged). Work branch: `c-demo-reliability`.
+Only AI/planning code and this handoff are changed. A owns routes, persistence,
+Canvas, auth, configuration, and merging; B2 owns the phone screens.
 
-## Reproducible example for A and B2
+## PDF task audit
 
-Import the fictional data and computed results from
-`src/lib/planning/demo-example.ts`. These are separate from the existing fixtures
-so teammates can adopt them deliberately.
+| PDF task | Evidence / status |
+| --- | --- |
+| Clone, branch, install, shared types and fixture, timeZone | Done before this pass; current main contains the required types and fixtures. |
+| Four required AI/planning files and three output contracts | Done; contracts preserved in this PR. |
+| Fictional Friday 5 p.m., 2–3 hour example and Tuesday cue | Done in `src/lib/planning/demo-example.ts`; sample outputs below. |
+| Start-by: no due, overdue, tomorrow, estimate change, timezone, due date unchanged | Done; calendar-day and DST tests pass. No new scheduling rule was needed. |
+| Latest checkpoint, same-assignment Idea, exclude Reflections, fallback next step | Done; A selects latest checkpoint in private detail GET; C filters Ideas and steps. Fixed empty-plan checkpoint case. |
+| No checkpoint, empty checkpoint, all steps done | Done and tested. An empty plan no longer means all work is finished. |
+| Zod validation, 1–6 editable steps, positive minutes, valid effort range | Done; unchanged contract matches A's plan-save route. |
+| Sanitized title/instructions only, caps, grounded suggestions, prompt injection treated as data | Boundary and prompt verified offline. Model's semantic grounding still needs live human review. |
+| Server-only provider integration | Done: Groq Responses API via OpenAI SDK, with OpenAI alternative retained. This intentionally follows merged main rather than reverting to OpenAI-only PDF instructions. |
+| Missing/refused/incomplete/invalid AI response and outage → manual plan | Done; real SDK with fake transport covers refusal, malformed output, 401/429/5xx and timeout/network errors. No automatic retries. |
+| Clear instructions → steps; vague instructions → review | Clear/vague fictional responses tested offline. Generic “Do the assignment” deterministically falls back. Other ambiguity relies on the model's review flag and needs live evaluation. |
+| Every step/estimate editable; generated draft separate from saved edits | Returned copies are editable and tested. A's POST breakdown only reads; PUT plan saves reviewed edits transactionally. Browser/database reload verification remains pending. |
+| Cache by assignment/source hash/prompt version | Done, user-scoped, 100-entry process-local cache; no durable cross-restart cache. Save reviewed plans before the demo. |
+| Focused tests | Done; `npm test` includes C's tests and A's private-planning tests. |
+| Fixture: clear due/instructions, Idea, Reflection, two complete steps, checkpoint | Done in `demo-example.ts`; preserved rather than rebuilt. |
+| Sample success/failure JSON and agreed wording for B2 | Done below and as typed exported examples. B2 acknowledgement/rendering still needs verification. |
+| Full phone return-loop rehearsal and fallback rehearsal with B | Needs verification with B2 on the integrated phone UI and signed-in demo account. No claim of completed phone rehearsal. |
+| Final handoff, known gaps, commit/push/PR | Original PR #2 merged; this follow-up adds reliability tests, updated examples, and the script below. A reviews and merges. |
 
-- History essay: Friday, November 13, 2026, 5 p.m., America/New_York.
-- Rough effort: 120–180 minutes; midpoint 150 minutes.
-- Four editable steps: choose event, outline, draft, revise/PDF.
-- First two steps are complete. The checkpoint says “Outline finished; ready to draft.”
-- Saved Idea: “Open with a question?” Saved Reflection: “I feel overwhelmed”.
-- This is invented coursework and a hand-authored draft, not a live AI result.
+## Contracts already integrated by A
 
-Expected start-by result at the fixed example clock:
+- `GET /api/private/shelf` returns start-by fields from C's rule using the saved
+  effort-range midpoint. Upcoming work without an estimate says `needs_plan`.
+- `POST /api/private/assignments/:id/breakdown` returns an unsaved editable draft.
+- `PUT /api/private/assignments/:id/plan` saves reviewed steps and effort. Include
+  existing step IDs when editing; keep the student's completion state.
+- `GET /api/private/assignments/:id` returns `welcomeBack`, the latest checkpoint,
+  saved thoughts, and ordered steps. There is no separate welcome-back endpoint.
+- POST `.../thoughts` saves explicit `idea` or `reflection`; POST `.../checkpoints`
+  saves `{ note, nextStep }`. These routes insert notes/checkpoints, not steps.
+
+Source review: A's plan-save SQL updates effort and steps, never `due_at`.
+The breakdown route sends no dates, notes, thoughts, or checkpoints to AI.
+These are code-review findings, not a substitute for authenticated persistence tests.
+
+## Exact fictional examples for B2
+
+Import from `src/lib/planning/demo-example.ts`:
+`exampleAssignment`, `exampleDraft`, `exampleSteps`, `exampleThoughts`,
+`exampleCheckpoint`, `exampleStartBy`, `exampleWelcomeBack`,
+`vagueExampleAssignment`, `exampleReviewDraft`, `exampleManualFallback`.
+All drafts here are hand-authored fixtures, not live provider recordings.
+Do not label them “live AI”. The demo fixture IDs are strings for layout work;
+private routes require real UUIDs from A's fictional seed/signed-in database.
+
+History essay instructions: “Choose a local historical event. Write a 900-word
+essay using two course readings. Revise and submit a PDF.” Due Friday,
+November 13, 2026, 5 p.m., America/New_York (`2026-11-13T22:00:00Z`).
+Fixed example clock: November 7, 2026, 10 a.m. in the same zone.
+
+Success draft (`exampleDraft`):
+
+```json
+{
+  "steps": [
+    { "text": "Read the instructions and choose an event", "minutes": 20 },
+    { "text": "Outline using two course readings", "minutes": 30 },
+    { "text": "Draft the essay", "minutes": 70 },
+    { "text": "Revise and prepare a PDF", "minutes": 30 }
+  ],
+  "effortMinMinutes": 120,
+  "effortMaxMinutes": 180,
+  "needsReview": false,
+  "note": "Fictional demo plan, not a live AI response. Review and edit the suggestions."
+}
+```
+
+Start-by: midpoint 150 minutes → ceil(150/90) = 2 workdays + 1 buffer day.
+Tuesday November 10 at 5 p.m. is a suggestion; Friday remains Canvas's due date.
 
 ```json
 {
@@ -27,9 +87,9 @@ Expected start-by result at the fixed example clock:
 }
 ```
 
-Tuesday, November 10 at 5 p.m. is a suggestion. Friday remains the Canvas due date.
-
-Expected welcome-back result:
+First two example steps are complete. Checkpoint: “Outline finished; ready to
+ draft.” Next step: “Write the opening paragraph.” Idea: “Open with a question?”
+Reflection: “I feel overwhelmed”. Welcome-back output:
 
 ```json
 {
@@ -39,62 +99,118 @@ Expected welcome-back result:
 }
 ```
 
-Show the Idea separately. The Reflection never becomes a task.
+Vague instructions: “Prepare something about history for class.” Example review
+response (10–20 minutes is only for checking instructions, not the unknown assignment):
 
-## Function contracts
+```json
+{
+  "steps": [{ "text": "Open Canvas and check the full instructions", "minutes": 10 }],
+  "effortMinMinutes": 10,
+  "effortMaxMinutes": 20,
+  "needsReview": true,
+  "note": "The prompt does not specify a topic or deliverable. Review Canvas before planning."
+}
+```
 
-- `getStartBy(assignment, estimateMinutes, now?)`: returns `{ startByAt, reason, state }`.
-  Pass the midpoint of the editable effort range. Uses the C guide's capped rule:
-  `min(5, max(1, ceil(minutes / 90))) + 1` calendar days. Missing dates and overdue
-  dates return null. A past suggestion clamps to now. Invalid upcoming dates,
-  time zones, or nonpositive estimates throw; validate route inputs before calling.
-- `getWelcomeBack(checkpoint, ideas, unfinishedSteps)`: returns `{ message, nextAction, ideaText }`.
-  A must select the latest checkpoint for the active assignment, with ownership
-  checks. The function filters Ideas and unfinished steps to that checkpoint's
-  assignment. Pass remaining steps (or all steps with their `done` flags).
-  No checkpoint invites opening the assignment; no remaining steps invites review
-  and submission. Otherwise checkpoint nextStep takes precedence over the first
-  unfinished step. Step order is the order supplied by the caller.
-- `breakDown(assignment)`: server-only, returns an editable validated draft or
-  `{ "steps": [], "needsReview": true, "note": "Make a manual plan" }`.
-  Success fields are `steps`, `effortMinMinutes`, `effortMaxMinutes`, `needsReview`,
-  and `note`; see `exampleDraft` for example JSON. A should save student edits
-  separately from generated drafts. This function does not save anything.
+Generic “Do the assignment”, blank instructions, unconfigured AI, refusal, outage,
+or invalid output return the same stable manual fallback:
 
-## AI configuration and integration
+```json
+{ "steps": [], "needsReview": true, "note": "Make a manual plan" }
+```
 
-The server needs `OPENAI_API_KEY` and `OPENAI_MODEL` in the ignored `.env.local`.
-Ask A for the team's supported model name; use one that supports Structured
-Outputs. Do not put credentials in client components or commit `.env.local`.
-Missing configuration returns the manual fallback; planning and welcome-back need
-no credentials. No paid API request is made by the tests.
+### Exact UI wording and behavior
 
-The implementation uses the OpenAI Responses API, `zodTextFormat`, and
-`output_parsed`, with a second local validation for effort-range ordering. Only
-sanitized title (240 characters maximum) and instructions (12,000 maximum) are
-sent. The caller must sanitize Canvas HTML before calling. Notes, reflections,
-dates, and user IDs are not sent. Refused, incomplete, malformed, or unavailable
-responses fall back to manual planning. Provider errors are not displayed.
+- Label every AI draft **“Suggested plan · editable”** even when `needsReview` is false.
+- When `needsReview` is true, show **“Review needed”** and `note` next to the draft.
+- No steps: **“AI draft unavailable. Make a manual plan.”** Keep existing edits,
+  offer **“Add a step”**, and keep saving available once there is a valid plan.
+- Truncated prompt: show the returned **“Only part of the instructions was used.
+  Review the full Canvas prompt before saving.”** warning.
+- Keep **“Canvas due”** and **“Suggested start”** separate. Explain the fixed
+  90-minute/day assumption and capped workdays if asked.
+- Display the Idea as a separate note. Do not convert it or a Reflection into a task.
+- Save only on **“Save reviewed plan”**. Do not auto-save a generated response or
+  silently overwrite existing typed work. Keep fields on save failure.
+- After saving, reload shelf/detail; after browser reload, verify saved edits,
+  completed steps, checkpoint, and thoughts remain attached to the same assignment.
 
-Successful drafts and in-flight calls are cached by user, assignment, source hash,
-and prompt version, capped at 100 entries. Returned drafts are independent copies.
-Failures can be retried. This is an in-memory cache: it does not survive process
-restarts or coordinate multiple server instances. A should persist generated
-drafts to avoid repeat calls across deployments. Keep authorization at the route.
+## AI quality and failure changes
 
-## Checks and remaining work
+The prompt now explicitly forbids inventing topics, word counts, source counts,
+file formats, and submission steps absent from the input. Exact generic prompts
+fall back without a request; short specific prompts such as “Read chapter 3”
+still reach the model. This is not a general-purpose ambiguity classifier.
+Truncation forces `needsReview` and a clear warning. A mixed refusal plus parsed
+text is rejected. Empty review notes get useful wording. Cache keys include the
+prompt version and truncation state, and returned drafts remain independent copies.
 
-Run `npm test`, `npx tsc --noEmit`, and `npm run lint`.
-The test command needs Node 20.6+ for `--import`; current setup uses Node 26.
+Welcome-back now distinguishes a missing plan from a completed plan: if no steps
+exist, a saved checkpoint nextStep survives. If actual same-assignment steps all
+have `done: true`, return “Review and submit when ready”. No checkpoint invites
+opening the assignment. Blank/invalid-dated Ideas are ignored; Reflections never
+participate in action selection.
 
-A still needs to connect the functions to shelf, breakdown, and welcome-back
-routes. B2 still needs to connect the UI. Live AI quality and the full phone
-workflow must be checked once configuration and integration exist. The original
-shared `Assignment` has no unlock date, so unlock-date clamping from the broader
-design document needs a coordinated type change with A before it can be added.
+## How to verify
 
-The C guide narrows the broader design document to 1–6 steps, camelCase draft
-fields, and a capped start-by rule; those are the contracts implemented here.
-No routes were invented to override A's ownership.
+```bash
+npm test
+npm run lint
+npx tsc --noEmit
+```
 
-Official SDK pattern: https://developers.openai.com/api/docs/guides/structured-outputs
+Unit/provider tests use the real SDK with fake HTTP responses: **no network calls**.
+The fictional JSON round-trip test checks data contracts, not database persistence.
+The baseline on main had 13 passing tests; this branch adds provider and demo-loop
+coverage. No Next.js pages, routes, config, package files, or database files changed.
+
+Opt-in live check (fixed fictional inputs only; never reads the database):
+
+```bash
+node --conditions=react-server --import tsx src/lib/ai/live-check.ts
+```
+
+A configures `GROQ_API_KEY` in ignored `.env.local`; optional `GROQ_MODEL` overrides
+`openai/gpt-oss-20b`. Groq takes precedence over OpenAI. OpenAI's alternative still
+uses `OPENAI_API_KEY` + `OPENAI_MODEL`. The live-check script loads local env without
+printing values, skips clearly if Groq is absent, and makes at most two actual
+requests (clear and vague); generic input is handled locally. The output is
+fictional only. Human review must check that no new requirements were invented.
+A passed schema test is not proof of semantic accuracy. Keep the manual path ready.
+
+This checkout has no `.env.local` or provider key. Live-check was run and reported
+**SKIPPED**; actual Groq generation and response quality remain unverified here.
+Do not copy a teammate's secrets or real student coursework into tests or Git.
+
+## A-owned follow-up (do not edit from this branch)
+
+`src/app/dev/planning/tester.tsx`: the draft handler reads `needsReview` but never
+renders that flag. Code-inspected reproduction: return a valid draft with
+`needsReview: true` and a neutral note such as “Check these steps before saving.”
+from the breakdown route; generate it in `/dev/planning`. The message is only
+“Editable draft ready” plus the note, without a distinct review warning. Expected:
+render **“Review needed”** when the flag is true, in addition to `note`. B2 should
+carry that behavior into the phone UI. This has not been browser-reproduced here.
+This file is intentionally untouched; the PR reports this follow-up to A.
+
+## Three-minute fictional demo script
+
+| Time | Action and wording |
+| --- | --- |
+| 0:00–0:25 | Open the fictional History essay on the phone. “Nook makes a large assignment into a small start. This is invented coursework.” |
+| 0:25–0:55 | Generate a live draft if verified; otherwise load the labeled fixture/manual path. “These steps and minutes are suggestions. I can edit every one.” Edit one step and save. |
+| 0:55–1:20 | Set the reviewed estimate to 120–180 minutes. “The midpoint is 150 minutes: two workdays plus one buffer day. Friday at five gets a Tuesday suggestion. Canvas's due date stays Friday.” Change effort and point out the changed suggestion. |
+| 1:20–1:50 | Save “Open with a question?” as Idea and “I feel overwhelmed” as Reflection. “Both stay with this assignment; neither automatically becomes a task.” |
+| 1:50–2:15 | Mark two steps complete. Save “Outline finished; ready to draft” and nextStep “Write the opening paragraph.” |
+| 2:15–2:45 | Reload, reopen the same assignment, show saved edits and welcome-back. “Here's where I stopped, my saved idea, and the next step I chose.” |
+| 2:45–3:00 | Show manual planning or explain the backup. “If AI is unavailable, I can still make and save my plan. A nudge, not a score.” |
+
+The fixed fixture's Tuesday cue is reproducible only at its fixed example clock.
+For a later live demo, A must supply a future fictional Friday due date and use
+actual current time. Never change a real Canvas due date to make the story fit.
+At 360/390/430 px, verify no horizontal overflow, 44 px touch controls, keyboard-open
+Save access, explicit loading/retry messages, and the full reload/return loop.
+Rehearse once with the provider available and once with manual planning. That
+phone/browser/Supabase rehearsal remains a team verification task, not completed here.
+
+Provider protocol reference: https://console.groq.com/docs/responses-api

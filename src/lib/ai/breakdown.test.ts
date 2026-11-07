@@ -80,3 +80,33 @@ test("unconfigured live adapter returns a manual plan without a network request"
     if (model !== undefined) process.env.OPENAI_MODEL = model;
   }
 });
+
+test("generic instructions get manual review without a model call; short specific prompts still work", async () => {
+  let calls = 0;
+  const run = createBreakDown(async () => { calls++; return { status: "completed", output_parsed: draft }; });
+  for (const descriptionText of ["Do the assignment.", "Complete your homework!", "Finish this task"]) {
+    assert.deepEqual(await run({ ...source, descriptionText }), { steps: [], needsReview: true, note: "Make a manual plan" });
+  }
+  assert.equal(calls, 0);
+  assert.equal((await run({ ...source, descriptionText: "Read chapter 3." })).steps.length, 1);
+  assert.equal(calls, 1);
+});
+
+test("truncation forces review even when a model reports confidence; different truncation does not reuse a confident draft", async () => {
+  const run = createBreakDown(async () => ({ status: "completed", output_parsed: draft }));
+  const text = "a".repeat(12000);
+  assert.equal((await run({ ...source, descriptionText: text })).needsReview, false);
+  const result = await run({ ...source, descriptionText: text + " Additional instructions." });
+  assert.equal(result.needsReview, true);
+  assert.match(result.note, /Only part of the instructions/);
+});
+
+test("empty review notes receive usable UI wording and cached copies keep editable estimates", async () => {
+  const run = createBreakDown(async () => ({ status: "completed", output_parsed: { ...draft, needsReview: true, note: " " } }));
+  const first = await run(source);
+  assert.match(first.note, /Review the Canvas prompt/);
+  if ("effortMinMinutes" in first) first.effortMinMinutes = 30;
+  const second = await run(source);
+  assert.ok("effortMinMinutes" in second);
+  assert.equal(second.effortMinMinutes, 120);
+});

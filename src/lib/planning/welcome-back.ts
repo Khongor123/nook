@@ -15,12 +15,14 @@ export function getWelcomeBack(
   if (!checkpoint) {
     return { message: "Welcome back. Open the assignment to begin.", nextAction: "Open the assignment", ideaText: null };
   }
-  const step = unfinishedSteps.find((item) => item.assignmentId === checkpoint.assignmentId && !item.done);
-  const idea = ideas.filter((item) => item.assignmentId === checkpoint.assignmentId && item.kind === "idea")
+  const steps = unfinishedSteps.filter((item) => item.assignmentId === checkpoint.assignmentId);
+  const step = steps.find((item) => !item.done);
+  const idea = ideas.filter((item) => item.assignmentId === checkpoint.assignmentId
+    && item.kind === "idea" && item.text.trim() && Number.isFinite(Date.parse(item.createdAt)))
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
-  const nextAction = step
-    ? checkpoint.nextStep.trim() || step.text
-    : "Review and submit when ready";
+  const allDone = steps.length > 0 && !step;
+  const nextAction = allDone ? "Review and submit when ready"
+    : checkpoint.nextStep.trim() || step?.text || "Open the assignment";
   const note = checkpoint.note.trim();
   return {
     message: note ? `You left off: ${note}` : "Welcome back. Your place is saved.",

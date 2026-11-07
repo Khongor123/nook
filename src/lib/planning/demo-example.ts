@@ -1,5 +1,5 @@
 import type { Assignment, Checkpoint, Step, Thought } from "../types";
-import type { BreakdownDraft } from "../ai/breakdown-schema";
+import type { BreakdownDraft, BreakdownResult } from "../ai/breakdown-schema";
 import { getStartBy } from "./start-by";
 import { getWelcomeBack } from "./welcome-back";
 
@@ -40,3 +40,17 @@ export const exampleCheckpoint: Checkpoint = {
 };
 export const exampleStartBy = getStartBy(exampleAssignment, 150, exampleNow);
 export const exampleWelcomeBack = getWelcomeBack(exampleCheckpoint, exampleThoughts, exampleSteps);
+
+export const vagueExampleAssignment: Assignment = {
+  ...exampleAssignment, id: "demo-planning-vague", title: "Class preparation",
+  descriptionText: "Prepare something about history for class.",
+};
+// Hand-authored B2 review state; not a claim about live model output.
+export const exampleReviewDraft: BreakdownDraft = {
+  steps: [{ text: "Open Canvas and check the full instructions", minutes: 10 }],
+  effortMinMinutes: 10, effortMaxMinutes: 20, needsReview: true,
+  note: "The prompt does not specify a topic or deliverable. Review Canvas before planning.",
+};
+export const exampleManualFallback: BreakdownResult = {
+  steps: [], needsReview: true, note: "Make a manual plan",
+};
