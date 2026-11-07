@@ -43,7 +43,7 @@ Checks ownership, then calls C's server-only `breakDown`. It returns an **editab
 }
 ```
 
-When AI is unavailable or unconfigured, C's safe fallback is `{ "steps": [], "needsReview": true, "note": "Make a manual plan" }`. Offer manual step entry. Never auto-save a draft or send thoughts/checkpoints to AI. The server needs `OPENAI_API_KEY` and a Structured Outputs capable `OPENAI_MODEL` in ignored `.env.local` for live generation; the private planner still works without them.
+When AI is unavailable or unconfigured, C's safe fallback is `{ "steps": [], "needsReview": true, "note": "Make a manual plan" }`. Offer manual step entry. Never auto-save a draft or send thoughts/checkpoints to AI. For the demo, put `GROQ_API_KEY` in ignored `.env.local`; the default model is `openai/gpt-oss-20b` on Groq. `GROQ_MODEL` can override it. Groq takes precedence when both provider keys are present. The original `OPENAI_API_KEY` plus `OPENAI_MODEL` path remains available. Only the assignment title and sanitized description go to the chosen provider.
 
 ### `PUT /api/private/assignments/:id/plan`
 

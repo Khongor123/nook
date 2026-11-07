@@ -66,13 +66,16 @@ test("failures can be retried; blank instructions make no call; only capped sour
 });
 
 test("unconfigured live adapter returns a manual plan without a network request", async () => {
+  const groqKey = process.env.GROQ_API_KEY;
   const key = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL;
   try {
+    delete process.env.GROQ_API_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_MODEL;
     assert.deepEqual(await breakDown(source), { steps: [], needsReview: true, note: "Make a manual plan" });
   } finally {
+    if (groqKey !== undefined) process.env.GROQ_API_KEY = groqKey;
     if (key !== undefined) process.env.OPENAI_API_KEY = key;
     if (model !== undefined) process.env.OPENAI_MODEL = model;
   }

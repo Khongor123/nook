@@ -58,13 +58,21 @@ export function createBreakDown(generate: Generator) {
 
 // Only the title and sanitized instructions leave this server boundary.
 export const breakDown = createBreakDown(async (source) => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL;
+  const groqKey = process.env.GROQ_API_KEY;
+  const apiKey = groqKey || process.env.OPENAI_API_KEY;
+  const model = groqKey
+    ? process.env.GROQ_MODEL || "openai/gpt-oss-20b"
+    : process.env.OPENAI_MODEL;
   if (!apiKey || !model) throw new Error("AI is not configured");
-  const client = new OpenAI({ apiKey, timeout: 20000, maxRetries: 0 });
+  const client = new OpenAI({
+    apiKey,
+    ...(groqKey ? { baseURL: "https://api.groq.com/openai/v1" } : {}),
+    timeout: 20000,
+    maxRetries: 0,
+  });
   return client.responses.parse({
     model,
-    store: false,
+    ...(!groqKey ? { store: false } : {}),
     input: [
       { role: "system", content: instructions },
       { role: "user", content: JSON.stringify(source) },
