@@ -19,7 +19,7 @@ Canvas, auth, configuration, and merging; B2 owns the phone screens.
 | Sanitized title/instructions only, caps, grounded suggestions, prompt injection treated as data | Boundary and prompt verified offline. Model's semantic grounding still needs live human review. |
 | Server-only provider integration | Done: Groq Responses API via OpenAI SDK, with OpenAI alternative retained. This intentionally follows merged main rather than reverting to OpenAI-only PDF instructions. |
 | Missing/refused/incomplete/invalid AI response and outage → manual plan | Done; real SDK with fake transport covers refusal, malformed output, 401/429/5xx and timeout/network errors. No automatic retries. |
-| Clear instructions → steps; vague instructions → review | Clear/vague fictional responses tested offline. Generic “Do the assignment” deterministically falls back. Other ambiguity relies on the model's review flag and needs live evaluation. |
+| Clear instructions → steps; vague instructions → review | Clear/vague fictional responses tested offline. Generic “Do the assignment” deterministically falls back. Any model draft marked needsReview is replaced with one instruction-checking step. Other ambiguity still needs live evaluation. |
 | Every step/estimate editable; generated draft separate from saved edits | Returned copies are editable and tested. A's POST breakdown only reads; PUT plan saves reviewed edits transactionally. Browser/database reload verification remains pending. |
 | Cache by assignment/source hash/prompt version | Done, user-scoped, 100-entry process-local cache; no durable cross-restart cache. Save reviewed plans before the demo. |
 | Focused tests | Done; `npm test` includes C's tests and A's private-planning tests. |
@@ -108,7 +108,7 @@ response (10–20 minutes is only for checking instructions, not the unknown ass
   "effortMinMinutes": 10,
   "effortMaxMinutes": 20,
   "needsReview": true,
-  "note": "The prompt does not specify a topic or deliverable. Review Canvas before planning."
+  "note": "Review the Canvas prompt before planning. This estimate is only for checking the instructions."
 }
 ```
 
@@ -174,8 +174,7 @@ A configures `GROQ_API_KEY` in ignored `.env.local`; optional `GROQ_MODEL` overr
 `openai/gpt-oss-20b`. Groq takes precedence over OpenAI. OpenAI's alternative still
 uses `OPENAI_API_KEY` + `OPENAI_MODEL`. The live-check script loads local env without
 printing values, skips clearly if Groq is absent, and makes at most two actual
-requests (clear and vague); generic input is handled locally. The output is
-fictional only. Human review must check that no new requirements were invented.
+requests (two clear assignments); the known vague and generic inputs are handled locally. Only safe category codes, counts, and timings are logged; raw responses are not logged. Human review must check that no new requirements were invented.
 A passed schema test is not proof of semantic accuracy. Keep the manual path ready.
 
 This checkout has no `.env.local` or provider key. Live-check was run and reported
@@ -214,3 +213,57 @@ Rehearse once with the provider available and once with manual planning. That
 phone/browser/Supabase rehearsal remains a team verification task, not completed here.
 
 Provider protocol reference: https://console.groq.com/docs/responses-api
+
+
+## Follow-up: live failure diagnostics and vague-output guard
+
+Branch `c-live-ai-diagnostics` adds opt-in diagnostics without changing the public
+API result. Normal API calls still return only a draft or the same manual fallback
+and do not log anything. `createBreakDown` accepts an optional observer receiving
+only fixed category codes. Exception messages, response bodies/headers, request
+IDs, source text, environment values, and raw model text are never forwarded.
+A broken observer cannot affect planning.
+
+The live checker now runs all cases before reporting failure and does not
+silently retry. It logs only the fixed case label, elapsed time, diagnostic codes,
+step count, review flag, safe quality findings, and pass/fail. Codes distinguish
+`timeout`, `network`, `authentication`, `rate_limited`, `provider_error`,
+`invalid_json`, `invalid_output`, `refused`, `incomplete`, and `not_configured`.
+A manual fallback on a clear input fails the check; a later explicit rerun is a
+separate result and does not erase the earlier failure. A real SDK timeout remains
+bounded at 20 seconds, with no automatic SDK retries.
+
+Known vague preparation prompts are locally reduced to exactly:
+
+```json
+{
+  "steps": [{ "text": "Open Canvas and check the full instructions", "minutes": 10 }],
+  "effortMinMinutes": 10,
+  "effortMaxMinutes": 20,
+  "needsReview": true,
+  "note": "Review the Canvas prompt before planning. This estimate is only for checking the instructions."
+}
+```
+
+Any model draft marked `needsReview` gets this same replacement, so model-added
+research, sources, deliverables, or submission instructions cannot survive in
+that review-only response. Truncated input also gets only the checking step,
+with its existing truncation warning. Empty/generic instructions and actual
+provider failures retain the empty-step manual fallback. Unknown ambiguity still
+relies on the provider flag; this is not a universal semantic classifier.
+
+Clear fictional cases cover (1) the essay, which explicitly supplies two course
+readings and PDF submission but no submission destination; (2) a chapter summary
+with no research sources or submission requirement. Checker-only heuristics flag
+unsupported source qualifiers/counts, external research, citation style, file
+format, submission action/destination, and step-total/effort-range mismatches.
+Supplying two course readings does not authorize three scholarly sources;
+“submit a PDF” does not authorize DOCX or a named platform. These checks can have
+false positives/negatives and do not prove factual grounding. They flag results
+for review, rather than rewriting a student's assignment or enforcing new API
+validation rules. The real provider's semantic quality remains a live review task.
+
+All regression tests use fictional data and dummy test markers. This checkout
+still has no Groq key: the opt-in checker reports SKIPPED here. No live output was
+reviewed or claimed verified in this follow-up. A/C can run the command above in
+their configured checkout and share only the safe summary for diagnosis.

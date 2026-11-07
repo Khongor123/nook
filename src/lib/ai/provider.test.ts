@@ -93,7 +93,7 @@ test("a vague assignment keeps the model's review warning rather than masqueradi
     effortMinMinutes: 10, effortMaxMinutes: 20, needsReview: true,
     note: "The prompt does not specify a topic or deliverable. Review Canvas before planning.",
   }))));
-  const result = await run({ ...exampleAssignment, descriptionText: "Prepare something about history for class." });
+  const result = await run({ ...exampleAssignment, descriptionText: "Prepare for discussion." });
   assert.equal(result.needsReview, true);
   assert.equal(result.steps.length, 1);
 });

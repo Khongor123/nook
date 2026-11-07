@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { zodTextFormat } from "openai/helpers/zod";
 import { breakdownOutputSchema, breakdownSchema } from "./breakdown-schema";
-import { breakDown, createBreakDown } from "./breakdown";
+import { breakDown, createBreakDown, reviewInstructions } from "./breakdown";
 
 const source = { id: "essay", userId: "demo", title: "History essay", descriptionText: "Write a short essay using the two course readings." };
 const draft = {
@@ -108,5 +108,19 @@ test("empty review notes receive usable UI wording and cached copies keep editab
   if ("effortMinMinutes" in first) first.effortMinMinutes = 30;
   const second = await run(source);
   assert.ok("effortMinMinutes" in second);
-  assert.equal(second.effortMinMinutes, 120);
+  assert.equal(second.effortMinMinutes, 10);
+});
+
+test("vague model output cannot invent research or submission steps, even in its note", async () => {
+  const run = createBreakDown(async () => ({ status: "completed", output_parsed: {
+    ...draft, needsReview: true,
+    steps: [{ text: "Find three scholarly sources and upload a PDF", minutes: 60 }],
+    note: "Use APA and submit on Canvas",
+  } }));
+  assert.deepEqual(await run({ ...source, descriptionText: "Prepare for discussion." }), reviewInstructions());
+});
+
+test("known vague preparation prompt is review-only even if the provider would be confident", async () => {
+  const run = createBreakDown(async () => { assert.fail("Vague preparation must not call the provider"); });
+  assert.deepEqual(await run({ ...source, descriptionText: "Prepare something about history for class." }), reviewInstructions());
 });
