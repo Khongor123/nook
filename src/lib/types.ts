@@ -51,6 +51,7 @@ export interface ShelfCard {
   // Nook's suggestion; the actual Canvas due date stays on Assignment.
   startByAt: ISODateString | null;
   startByReason: string;
+  startByState?: "suggested" | "start_now" | "no_due_date" | "overdue" | "needs_plan" | "unavailable";
   stepsDone: number;
   stepsTotal: number;
 }
@@ -60,4 +61,9 @@ export interface AssignmentDetail {
   steps: Step[];
   thoughts: Thought[];
   latestCheckpoint: Checkpoint | null;
+}
+
+export interface PrivateAssignmentDetail extends AssignmentDetail {
+  effortEstimate: { minMinutes: number; maxMinutes: number } | null;
+  welcomeBack: { message: string; nextAction: string; ideaText: string | null };
 }
