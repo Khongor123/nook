@@ -62,3 +62,29 @@ test("empty checkpoint uses an unfinished step; completed and foreign steps neve
     message: "Welcome back. Open the assignment to begin.", nextAction: "Open the assignment", ideaText: null,
   });
 });
+
+test("a checkpoint's next step survives when no plan exists; no plan does not mean all steps done", () => {
+  assert.equal(getWelcomeBack(checkpoint, [idea], []).nextAction, checkpoint.nextStep);
+  assert.equal(getWelcomeBack(checkpoint, [idea], [{ ...step, assignmentId: "lab" }]).nextAction, checkpoint.nextStep);
+  assert.equal(getWelcomeBack({ ...checkpoint, nextStep: " " }, [], []).nextAction, "Open the assignment");
+  assert.equal(getWelcomeBack(checkpoint, [idea], [{ ...step, done: true }]).nextAction, "Review and submit when ready");
+});
+
+test("reflection-only and unusable Idea lists do not become actions or mutate stored thoughts", () => {
+  const thoughts = Object.freeze([
+    Object.freeze({ ...idea, kind: "reflection" as const, text: "I feel overwhelmed" }),
+    Object.freeze({ ...idea, text: " ", createdAt: "2026-11-09T00:00:00Z" }),
+    Object.freeze({ ...idea, text: "Bad timestamp", createdAt: "invalid" }),
+  ]);
+  const result = getWelcomeBack(Object.freeze(checkpoint), thoughts, Object.freeze([Object.freeze(step)]));
+  assert.equal(result.ideaText, null);
+  assert.equal(result.nextAction, checkpoint.nextStep);
+  assert.equal(thoughts[0].kind, "reflection");
+});
+
+test("calendar subtraction also works for a non-hour offset, and invalid dates/zones fail explicitly", () => {
+  assert.equal(getStartBy({ dueAt: "2026-11-13T11:15:00Z", timeZone: "Asia/Kathmandu" }, 150, now).startByAt,
+    "2026-11-10T11:15:00Z");
+  assert.throws(() => getStartBy({ ...due, timeZone: "invalid" }, 150, now));
+  assert.throws(() => getStartBy({ ...due, dueAt: "invalid" }, 150, now));
+});
