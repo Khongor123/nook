@@ -267,3 +267,19 @@ All regression tests use fictional data and dummy test markers. This checkout
 still has no Groq key: the opt-in checker reports SKIPPED here. No live output was
 reviewed or claimed verified in this follow-up. A/C can run the command above in
 their configured checkout and share only the safe summary for diagnosis.
+
+
+### Diagnosing the reported clear-summary failure
+
+The reported live run passed clear/vague/generic cases but returned a manual
+fallback for `clear_no_sources_or_submission` with `provider_error`. That result
+is a failed live run, not a schema-quality pass for the summary. It does not
+establish whether Groq rejected the request or had an outage.
+
+The follow-up splits that category into fixed HTTP codes for 400, 404, 422,
+500, 502 and 503. A 400 with exactly the known `json_validate_failed` code is
+reported as `provider_http_400_schema_rejected`; all other provider code text is
+ignored. Existing authentication, timeout and rate-limit categories stay intact.
+No raw bodies or generated text are logged. Re-run the checker once after pulling
+this branch and share only its safe summary. Keep this PR open until the cause
+is understood; a later passing run alone does not diagnose the earlier failure.
