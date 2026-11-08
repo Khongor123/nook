@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
-import { CanvasError, canvasAssignmentUrl, canvasPages } from "./canvas";
+import { CanvasError, canvasAssignmentUrl, canvasPages, isSubmittedOrGradedAssignment, listCanvasAssignments } from "./canvas";
 
 const config = { base: new URL("https://school.instructure.com/"), token: "test-only" };
 const item = z.object({ id: z.string() });
@@ -55,4 +55,24 @@ test("Canvas rejects bad credentials, unsafe page links, and external assignment
   assert.equal(canvasAssignmentUrl("https://other.example/a", config.base), null);
   assert.equal(canvasAssignmentUrl("https://school.instructure.com/courses/1/assignments/2", config.base),
     "https://school.instructure.com/courses/1/assignments/2");
+});
+
+test("assignment import requests the current submission and hides submitted or graded work", async () => {
+  let requested = "";
+  const fakeFetch = (async (url: URL | RequestInfo) => {
+    requested = String(url);
+    return Response.json([
+      { id: "1", name: "Graded", submission: { workflow_state: "graded", graded_at: "2026-11-01T12:00:00Z" } },
+      { id: "2", name: "Ungraded", submission: { workflow_state: "submitted", grade: null } },
+      { id: "3", name: "New attempt", submission: { workflow_state: "submitted", grade: "85", grade_matches_current_submission: false } },
+      { id: "4", name: "No submission" },
+      { id: "5", name: "Zero grade", submission: { workflow_state: "submitted", score: 0 } },
+      { id: "6", name: "Pending review", submission: { workflow_state: "pending_review" } },
+      { id: "7", name: "Submitted timestamp", submission: { workflow_state: "unsubmitted", submitted_at: "2026-11-02T12:00:00Z" } },
+      { id: "8", name: "Unsubmitted stale grade", submission: { workflow_state: "unsubmitted", grade: "85", grade_matches_current_submission: false } },
+    ]);
+  }) as typeof fetch;
+  const assignments = await listCanvasAssignments(config, "42", fakeFetch);
+  assert.equal(new URL(requested).searchParams.get("include[]"), "submission");
+  assert.deepEqual(assignments.map(isSubmittedOrGradedAssignment), [true, true, true, false, true, true, true, false]);
 });

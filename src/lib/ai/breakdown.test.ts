@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { zodTextFormat } from "openai/helpers/zod";
 import { breakdownOutputSchema, breakdownSchema } from "./breakdown-schema";
-import { breakDown, createBreakDown, reviewInstructions } from "./breakdown";
+import { breakDown, createBreakDown } from "./breakdown";
 
 const source = { id: "essay", userId: "demo", title: "History essay", descriptionText: "Write a short essay using the two course readings." };
 const draft = {
-  steps: [{ text: "Read the instructions", minutes: 20 }],
+  steps: [{ text: "Outline the essay", minutes: 20 }],
   effortMinMinutes: 120, effortMaxMinutes: 180, needsReview: false, note: "Suggested; edit before saving.",
 };
 
@@ -27,7 +27,7 @@ test("cache deduplicates concurrent calls and keeps returned drafts independentl
   const [a, b] = await Promise.all([run(source), run(source)]);
   assert.equal(calls, 1);
   a.steps[0].text = "Student edit";
-  assert.equal(b.steps[0].text, "Read the instructions");
+  assert.equal(b.steps[0].text, "Outline the essay");
   await run({ ...source, descriptionText: "Changed instructions" });
   await run({ ...source, userId: "another-user" });
   assert.equal(calls, 3);
@@ -83,7 +83,7 @@ test("unconfigured live adapter returns a manual plan without a network request"
 
 test("generic instructions get manual review without a model call; short specific prompts still work", async () => {
   let calls = 0;
-  const run = createBreakDown(async () => { calls++; return { status: "completed", output_parsed: draft }; });
+  const run = createBreakDown(async (input) => { calls++; return { status: "completed", output_parsed: input.descriptionText === "Read chapter 3." ? { ...draft, steps: [{ text: "Read chapter 3", minutes: 30 }] } : draft }; });
   for (const descriptionText of ["Do the assignment.", "Complete your homework!", "Finish this task"]) {
     assert.deepEqual(await run({ ...source, descriptionText }), { steps: [], needsReview: true, note: "Make a manual plan" });
   }
@@ -98,17 +98,18 @@ test("truncation forces review even when a model reports confidence; different t
   assert.equal((await run({ ...source, descriptionText: text })).needsReview, false);
   const result = await run({ ...source, descriptionText: text + " Additional instructions." });
   assert.equal(result.needsReview, true);
-  assert.match(result.note, /Only part of the instructions/);
+  assert.equal(result.note, "Make a manual plan");
 });
 
-test("empty review notes receive usable UI wording and cached copies keep editable estimates", async () => {
+test("reviewed drafts keep useful steps and receive usable UI wording", async () => {
   const run = createBreakDown(async () => ({ status: "completed", output_parsed: { ...draft, needsReview: true, note: " " } }));
   const first = await run(source);
-  assert.match(first.note, /Review the Canvas prompt/);
+  assert.match(first.note, /Review these suggested steps/);
+  assert.equal(first.steps[0].text, "Outline the essay");
   if ("effortMinMinutes" in first) first.effortMinMinutes = 30;
   const second = await run(source);
   assert.ok("effortMinMinutes" in second);
-  assert.equal(second.effortMinMinutes, 10);
+  assert.equal(second.effortMinMinutes, 120);
 });
 
 test("vague model output cannot invent research or submission steps, even in its note", async () => {
@@ -117,10 +118,14 @@ test("vague model output cannot invent research or submission steps, even in its
     steps: [{ text: "Find three scholarly sources and upload a PDF", minutes: 60 }],
     note: "Use APA and submit on Canvas",
   } }));
-  assert.deepEqual(await run({ ...source, descriptionText: "Prepare for discussion." }), reviewInstructions());
+  assert.deepEqual(await run({ ...source, descriptionText: "Prepare for discussion." }), {
+    steps: [], needsReview: true, note: "Make a manual plan",
+  });
 });
 
 test("known vague preparation prompt is review-only even if the provider would be confident", async () => {
   const run = createBreakDown(async () => { assert.fail("Vague preparation must not call the provider"); });
-  assert.deepEqual(await run({ ...source, descriptionText: "Prepare something about history for class." }), reviewInstructions());
+  assert.deepEqual(await run({ ...source, descriptionText: "Prepare something about history for class." }), {
+    steps: [], needsReview: true, note: "Make a manual plan",
+  });
 });

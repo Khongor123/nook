@@ -7,10 +7,17 @@ export async function GET() {
   if (!context) return apiError(401, "UNAUTHORIZED", "Sign in first");
 
   const { supabase, userId } = context;
+  const { data: courses, error: coursesError } = await supabase.from("courses")
+    .select("canvas_course_id").eq("user_id", userId);
+  if (coursesError) return apiError(500, "LOAD_FAILED", "Could not load selected courses", true);
+  const selectedIds = (courses ?? []).map((course) => course.canvas_course_id);
+  if (!selectedIds.length) return privateJson([]);
   const { data: rows, error } = await supabase
     .from("assignments")
     .select("*")
     .eq("user_id", userId)
+    .in("canvas_course_id", selectedIds)
+    .eq("status", "open")
     .order("due_at", { ascending: true, nullsFirst: false });
   if (error) return apiError(500, "LOAD_FAILED", "Could not load your shelf", true);
 

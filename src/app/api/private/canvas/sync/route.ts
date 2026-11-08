@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { CanvasError, canvasAssignmentUrl, canvasConfig, htmlToPlainText, listCanvasAssignments, listCanvasCourses } from "@/lib/canvas";
+import { CanvasError, canvasAssignmentUrl, canvasConfig, htmlToPlainText, isSubmittedOrGradedAssignment, listCanvasAssignments, listCanvasCourses } from "@/lib/canvas";
 import { apiError, privateContext, privateJson } from "@/lib/private-api";
 
-const requestSchema = z.object({ courseIds: z.array(z.string().regex(/^\d+$/)).min(1).max(20) });
+const requestSchema = z.object({ courseIds: z.array(z.string().regex(/^\d+$/)).max(500) });
 
 export async function POST(request: Request) {
   const context = await privateContext();
@@ -15,16 +15,36 @@ export async function POST(request: Request) {
   try {
     input = requestSchema.parse(await request.json());
   } catch {
-    return apiError(400, "INVALID_REQUEST", "Choose at least one Canvas course");
+    return apiError(400, "INVALID_REQUEST", "Choose up to 500 Canvas courses");
   }
 
   try {
     const config = canvasConfig(context.userId);
-    const available = await listCanvasCourses(config);
+    const available = input.courseIds.length ? await listCanvasCourses(config) : [];
     const selected = [...new Set(input.courseIds)].map((id) => available.find((course) => course.id === id));
     if (selected.some((course) => !course)) return apiError(400, "INVALID_COURSE", "Choose a course from your Canvas list");
 
     const { supabase, userId } = context;
+    const { data: savedCourses, error: savedError } = await supabase.from("courses")
+      .select("canvas_course_id").eq("user_id", userId);
+    if (savedError) return apiError(500, "LOAD_FAILED", "Could not load selected courses", true);
+    if (selected.length) {
+      const selectionSave = await supabase.from("courses").upsert(
+        selected.filter((course): course is NonNullable<typeof course> => !!course).map((course) => ({
+          user_id: userId, canvas_course_id: course.id, name: course.name,
+        })),
+        { onConflict: "user_id,canvas_course_id" },
+      );
+      if (selectionSave.error) return apiError(500, "SAVE_FAILED", "Could not save selected courses", true);
+    }
+    const selectedIds = new Set(input.courseIds);
+    const removed = (savedCourses ?? []).map((course) => course.canvas_course_id)
+      .filter((courseId) => !selectedIds.has(courseId));
+    if (removed.length) {
+      const selectionDelete = await supabase.from("courses").delete()
+        .eq("user_id", userId).in("canvas_course_id", removed);
+      if (selectionDelete.error) return apiError(500, "SAVE_FAILED", "Could not update selected courses", true);
+    }
     let imported = 0;
     let updated = 0;
     const failures: { courseId: string; code: string; message: string }[] = [];
@@ -34,12 +54,6 @@ export async function POST(request: Request) {
       if (!course) continue;
       try {
         const assignments = (await listCanvasAssignments(config, course.id)).filter((item) => item.published !== false);
-        const courseSave = await supabase.from("courses").upsert(
-          { user_id: userId, canvas_course_id: course.id, name: course.name },
-          { onConflict: "user_id,canvas_course_id" },
-        );
-        if (courseSave.error) throw new CanvasError("SAVE_FAILED", "Could not save course", 500, true);
-
         const existing = await supabase.from("assignments")
           .select("canvas_assignment_id,status")
           .eq("user_id", userId)
@@ -62,7 +76,7 @@ export async function POST(request: Request) {
             source_available: true,
             time_zone: course.time_zone ?? "UTC",
             source_updated_at: item.updated_at ?? null,
-            status: savedStatus.get(item.id) ?? "open",
+            status: isSubmittedOrGradedAssignment(item) ? "submitted" : "open",
           }, { onConflict: "user_id,canvas_course_id,canvas_assignment_id" });
           if (save.error) throw new CanvasError("SAVE_FAILED", "Could not save assignments", 500, true);
           if (savedStatus.has(item.id)) updated++;

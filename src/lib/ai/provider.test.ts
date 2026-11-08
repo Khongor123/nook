@@ -152,7 +152,7 @@ test("network/timeout errors, incomplete output, malformed JSON, and refusal are
   }
 });
 
-test("a vague assignment keeps the model's review warning rather than masquerading as a final plan", async () => {
+test("a vague assignment does not become an instruction-only plan", async () => {
   const run = createBreakDown(createProviderGenerator(env, async () => response(JSON.stringify({
     steps: [{ text: "Open Canvas and check the full instructions", minutes: 10 }],
     effortMinMinutes: 10, effortMaxMinutes: 20, needsReview: true,
@@ -160,5 +160,5 @@ test("a vague assignment keeps the model's review warning rather than masqueradi
   }))));
   const result = await run({ ...exampleAssignment, descriptionText: "Prepare for discussion." });
   assert.equal(result.needsReview, true);
-  assert.equal(result.steps.length, 1);
+  assert.equal(result.steps.length, 0);
 });

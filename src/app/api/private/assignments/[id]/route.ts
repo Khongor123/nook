@@ -23,6 +23,14 @@ export async function GET(
     .maybeSingle();
   if (error) return apiError(500, "LOAD_FAILED", "Could not load assignment", true);
   if (!row) return apiError(404, "NOT_FOUND", "Assignment not found");
+  if (row.status !== "open") return apiError(404, "NOT_FOUND", "Assignment is no longer on your shelf");
+  const { data: selectedCourse, error: courseError } = await supabase.from("courses")
+    .select("canvas_course_id")
+    .eq("user_id", userId)
+    .eq("canvas_course_id", row.canvas_course_id)
+    .maybeSingle();
+  if (courseError) return apiError(500, "LOAD_FAILED", "Could not check selected course", true);
+  if (!selectedCourse) return apiError(404, "NOT_FOUND", "Assignment is no longer on your shelf");
 
   const [stepResult, thoughtResult, checkpointResult] = await Promise.all([
     supabase.from("steps").select("*").eq("assignment_id", id).eq("user_id", userId).order("position"),

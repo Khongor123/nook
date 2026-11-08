@@ -16,10 +16,28 @@ const assignmentSchema = z.object({
   submission_types: z.array(z.string()).nullable().optional(),
   updated_at: z.string().nullable().optional(),
   published: z.boolean().optional(),
+  submission: z.object({
+    workflow_state: z.string().nullable().optional(),
+    submitted_at: z.string().nullable().optional(),
+    graded_at: z.string().nullable().optional(),
+    grade: z.union([z.string(), z.number()]).nullable().optional(),
+    score: z.number().nullable().optional(),
+    grade_matches_current_submission: z.boolean().nullable().optional(),
+  }).nullable().optional(),
 });
 
 export type CanvasCourse = z.infer<typeof courseSchema>;
 export type CanvasAssignment = z.infer<typeof assignmentSchema>;
+
+export function isSubmittedOrGradedAssignment(assignment: CanvasAssignment) {
+  const submission = assignment.submission;
+  if (!submission) return false;
+  if (["submitted", "graded", "pending_review"].includes(submission.workflow_state ?? "") ||
+    submission.submitted_at != null) return true;
+  if (submission.grade_matches_current_submission === false) return false;
+  return submission.graded_at != null ||
+    submission.grade != null || submission.score != null;
+}
 
 export class CanvasError extends Error {
   constructor(
@@ -153,8 +171,8 @@ export function listCanvasCourses(config: ReturnType<typeof canvasConfig>) {
   return canvasPages(config, "/api/v1/courses?enrollment_state=active&enrollment_type=student&per_page=100", courseSchema, 500);
 }
 
-export function listCanvasAssignments(config: ReturnType<typeof canvasConfig>, courseId: string) {
-  return canvasPages(config, `/api/v1/courses/${encodeURIComponent(courseId)}/assignments?per_page=100`, assignmentSchema, 1000);
+export function listCanvasAssignments(config: ReturnType<typeof canvasConfig>, courseId: string, fetcher: typeof fetch = fetch) {
+  return canvasPages(config, `/api/v1/courses/${encodeURIComponent(courseId)}/assignments?include%5B%5D=submission&per_page=100`, assignmentSchema, 1000, fetcher);
 }
 
 export function htmlToPlainText(html: string) {

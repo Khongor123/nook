@@ -14,6 +14,7 @@ export async function GET() {
     const lastSync = new Map((saved ?? []).map((row) => [row.canvas_course_id, row.last_synced_at]));
     return privateJson(courses.map(({ id, name, time_zone }) => ({
       id, name, timeZone: time_zone ?? "UTC", lastSyncedAt: lastSync.get(id) ?? null,
+      selected: lastSync.has(id),
     })));
   } catch (error) {
     if (error instanceof CanvasError) return apiError(error.status, error.code, error.message, error.retryable);

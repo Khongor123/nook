@@ -14,7 +14,7 @@ export function getStartBy(
   now: Date = new Date(),
 ): StartByResult {
   if (!assignment.dueAt) {
-    return { startByAt: null, reason: "No Canvas due date", state: "no_due_date" };
+    return { startByAt: null, reason: "No due date, so no rush.", state: "no_due_date" };
   }
   const current = Temporal.Instant.from(now.toISOString());
   const due = Temporal.Instant.from(assignment.dueAt);
@@ -24,7 +24,7 @@ export function getStartBy(
   if (!Number.isFinite(estimateMinutes) || estimateMinutes <= 0) {
     throw new RangeError("Estimate must be a positive number of minutes.");
   }
-  const daysBefore = Math.min(5, Math.max(1, Math.ceil(estimateMinutes / 90))) + 1;
+  const daysBefore = Math.max(1, Math.ceil(estimateMinutes / 90)) + 1;
   const suggested = due.toZonedDateTimeISO(assignment.timeZone)
     .subtract({ days: daysBefore }).toInstant();
   if (Temporal.Instant.compare(suggested, current) <= 0) {
@@ -32,7 +32,7 @@ export function getStartBy(
   }
   return {
     startByAt: suggested.toString(),
-    reason: `Suggested from about ${estimateMinutes} minutes of work at 90 minutes a day, plus one buffer day. Change the estimate anytime.`,
+    reason: `About ${Math.ceil(estimateMinutes / 60)} hours of work in small pieces, with a day of breathing room.`,
     state: "suggested",
   };
 }
