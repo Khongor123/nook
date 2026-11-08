@@ -49,7 +49,18 @@ export interface Checkpoint {
   createdAt: ISODateString;
 }
 
+export interface EffortEstimate { minMinutes: number; maxMinutes: number }
+export type EffortStatus = "pending" | "ready" | "unavailable";
+export interface EffortResult {
+  effortEstimate: EffortEstimate | null;
+  effortStatus: Exclude<EffortStatus, "pending">;
+  needsReview: boolean;
+  sourceHash: string;
+}
 export interface ShelfCard {
+  effortEstimate?: EffortEstimate | null;
+  effortSource?: "ai" | "student" | null;
+  effortStatus?: EffortStatus;
   assignment: Assignment;
   // Nook's suggestion; the actual Canvas due date stays on Assignment.
   startByAt: ISODateString | null;

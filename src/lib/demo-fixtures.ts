@@ -57,6 +57,27 @@ export const demoAssignments: Assignment[] = [
     updatedAt: now.toISOString(),
     status: "open",
   },
+  {
+    id: "demo-assignment-presentation", userId: demoUserId,
+    canvasCourseId: "demo-course-history", canvasAssignmentId: "demo-canvas-presentation",
+    courseName: "History 101", title: "Museum exhibit presentation",
+    descriptionText: "Choose one exhibit from the course's virtual museum tour. Prepare a five-minute presentation with four slides explaining its historical context and two details you noticed. Rehearse once and present in class.",
+    dueAt: daysFromNow(8), timeZone, updatedAt: now.toISOString(), status: "open",
+  },
+  {
+    id: "demo-assignment-poetry", userId: demoUserId,
+    canvasCourseId: "demo-course-literature", canvasAssignmentId: "demo-canvas-poetry",
+    courseName: "Literature 202", title: "Poetry close reading",
+    descriptionText: "Read the two poems provided in class. Choose one and write a 600-word close reading of its imagery and rhythm, quoting lines from that poem. Revise your analysis and submit a PDF.",
+    dueAt: daysFromNow(10), timeZone, updatedAt: now.toISOString(), status: "open",
+  },
+  {
+    id: "demo-assignment-chart", userId: demoUserId,
+    canvasCourseId: "demo-course-science", canvasAssignmentId: "demo-canvas-chart",
+    courseName: "Environmental Science", title: "Rainfall data chart",
+    descriptionText: "Use the supplied fictional seven-day rainfall dataset. Calculate the total and daily average, create a labeled bar chart, and write a 200-word explanation of the pattern. Submit the chart and explanation together as a PDF.",
+    dueAt: daysFromNow(3), timeZone, updatedAt: now.toISOString(), status: "open",
+  },
 ];
 
 export const demoSteps: Step[] = [

@@ -7,7 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --conditions=react-server --import tsx --test src/lib/planning/*.test.ts src/lib/ai/*.test.ts src/lib/private-planning.test.ts src/lib/canvas.test.ts"
+    "test": "node --conditions=react-server --import tsx --test src/lib/planning/*.test.ts src/lib/ai/*.test.ts src/lib/private-planning.test.ts src/lib/canvas.test.ts src/lib/demo-state.test.ts"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",
