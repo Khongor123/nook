@@ -16,7 +16,7 @@ test("Friday at 5pm suggests Tuesday at 5pm; source due date is preserved", () =
 
 test("no date, overdue, and tomorrow have calm outputs", () => {
   assert.deepEqual(getStartBy({ ...due, dueAt: null }, 150, now), {
-    startByAt: null, state: "no_due_date", reason: "No Canvas due date",
+    startByAt: null, state: "no_due_date", reason: "No due date, so no rush.",
   });
   assert.equal(getStartBy(due, 150, new Date("2026-11-14T00:00:00Z")).state, "overdue");
   assert.deepEqual(getStartBy(due, 150, new Date("2026-11-12T15:00:00Z")), {
@@ -31,8 +31,8 @@ test("calendar subtraction preserves 5pm across both daylight-saving changes", (
     new Date("2026-10-25T12:00:00Z")).startByAt, "2026-10-31T21:00:00Z");
 });
 
-test("long estimates are capped and invalid estimates are rejected", () => {
-  assert.equal(getStartBy(due, 3000, now).startByAt, "2026-11-07T22:00:00Z");
+test("long estimates start today and invalid estimates are rejected", () => {
+  assert.equal(getStartBy(due, 3000, now).startByAt, "2026-11-07T15:00:00Z");
   for (const value of [0, -1, NaN, Infinity]) assert.throws(() => getStartBy(due, value, now));
 });
 
