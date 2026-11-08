@@ -8,6 +8,7 @@ import type { PrivateAssignmentDetail, ShelfCard, Step, ThoughtKind } from "@/li
 import { estimateHours } from "@/lib/effort";
 import { motion } from "framer-motion";
 import { ArrowLeft, BookOpen, Check, Leaf, Library, Lock, PenLine, RefreshCw, Trash2 } from "lucide-react";
+import { demoAssignments, demoCheckpoints, demoShelfCards, demoSteps, demoThoughts } from "@/lib/demo-fixtures";
 
 type Screen = "welcome" | "sign-in" | "sign-up" | "connect" | "coming-later" | "import" | "shelf" | "assignment" | "current" | "checkpoint" | "welcome-back";
 type Course = { id: string; name: string; lastSyncedAt: string | null; selected: boolean };
@@ -15,7 +16,15 @@ type DraftStep = Pick<Step, "text" | "minutes" | "done" | "source"> & { id?: str
 type Draft = { steps: { text: string; minutes: number }[]; effortMinMinutes?: number; effortMaxMinutes?: number; needsReview: boolean; note: string };
 type ApiError = { code?: string; message?: string; retryable?: boolean };
 const ACTIVE_KEY = "nook-active-assignment";
-const DEMO_AFTER_AUTH_KEY = "nook-demo-after-auth";
+const DEMO_MODE_KEY = "nook-demo-mode";
+const DEMO_COURSES_KEY = "nook-demo-courses";
+const DEMO_STATE_KEY = "nook-demo-state";
+const demoCourses: Course[] = [...new Map(demoAssignments.map(a => [a.canvasCourseId, { id: a.canvasCourseId, name: a.courseName, selected: true, lastSyncedAt: null }])).values()];
+function isDemoMode() { return localStorage.getItem(DEMO_MODE_KEY) === "true"; }
+function readDemoState(): Record<string, { steps?: DraftStep[]; thoughts?: PrivateAssignmentDetail["thoughts"]; checkpoint?: PrivateAssignmentDetail["latestCheckpoint"]; effortEstimate?: PrivateAssignmentDetail["effortEstimate"] }> {
+  try { return JSON.parse(localStorage.getItem(DEMO_STATE_KEY) || "{}"); } catch { return {}; }
+}
+function saveDemoRecord(id: string, patch: ReturnType<typeof readDemoState>[string]) { localStorage.setItem(DEMO_STATE_KEY, JSON.stringify({ ...readDemoState(), [id]: { ...readDemoState()[id], ...patch } })); }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
@@ -84,6 +93,16 @@ export default function NookApp({ screen, id }: { screen: Screen; id?: string })
     if (!id) return;
     setLoading(true); setError("");
     try {
+      if (isDemoMode()) {
+        const assignment = demoAssignments.find(a => a.id === id);
+        if (!assignment) throw new Error("This demo assignment is unavailable.");
+        const saved = readDemoState()[id] ?? {};
+        const value: PrivateAssignmentDetail = { assignment, steps: saved.steps?.map(s => ({ ...s, assignmentId: id, id: s.id || `demo-step-${crypto.randomUUID()}` })) ?? demoSteps.filter(s => s.assignmentId === id), thoughts: saved.thoughts ?? demoThoughts.filter(t => t.assignmentId === id), latestCheckpoint: saved.checkpoint ?? demoCheckpoints.find(c => c.assignmentId === id) ?? null, effortEstimate: saved.effortEstimate ?? { minMinutes: 120, maxMinutes: 180 }, welcomeBack: { message: "Your work is ready when you are.", nextAction: saved.checkpoint?.nextStep || "Continue with the next small step.", ideaText: (saved.thoughts ?? demoThoughts).find(t => t.assignmentId === id && t.kind === "idea")?.text ?? null } };
+        setDetail(value); setSteps(value.steps.map(s => ({ id: s.id, text: s.text, minutes: s.minutes, done: s.done, source: s.source })));
+        setEffortMinHours(Math.round((value.effortEstimate?.minMinutes ?? 120) / 60)); setEffortMaxHours(Math.round((value.effortEstimate?.maxMinutes ?? 180) / 60));
+        setStartCard(demoShelfCards.find(card => card.assignment.id === id) ?? null);
+        localStorage.setItem(ACTIVE_KEY, id); return;
+      }
       const value = await request<PrivateAssignmentDetail>(`/api/private/assignments/${id}`);
       setDetail(value); setSteps(value.steps.map(s => ({ id: s.id, text: s.text, minutes: s.minutes, done: s.done, source: s.source })));
       setEffortMinHours(Math.max(1, Math.round((value.effortEstimate?.minMinutes ?? 60) / 60)));
@@ -97,6 +116,10 @@ export default function NookApp({ screen, id }: { screen: Screen; id?: string })
   const loadCourses = useCallback(async () => {
     setLoading(true); setError("");
     try {
+      if (isDemoMode()) {
+        const selectedIds = JSON.parse(localStorage.getItem(DEMO_COURSES_KEY) || JSON.stringify(demoCourses.map(c => c.id))) as string[];
+        setCourses(demoCourses); setSelected(selectedIds); return;
+      }
       const value = await request<Course[]>("/api/private/canvas/courses");
       setCourses(value); setSelected(value.filter(c => c.selected).map(c => c.id));
     } catch (e) {
@@ -109,6 +132,10 @@ export default function NookApp({ screen, id }: { screen: Screen; id?: string })
   const loadShelf = useCallback(async () => {
     setLoading(true); setError("");
     try {
+      if (isDemoMode()) {
+        const selectedIds = JSON.parse(localStorage.getItem(DEMO_COURSES_KEY) || JSON.stringify(demoCourses.map(c => c.id))) as string[];
+        setCards(demoShelfCards.filter(card => selectedIds.includes(card.assignment.canvasCourseId))); setShelfPage(0); return;
+      }
       const value = await request<ShelfCard[]>("/api/private/shelf");
       setCards(value); setShelfPage(0);
     } catch (e) {
@@ -118,6 +145,7 @@ export default function NookApp({ screen, id }: { screen: Screen; id?: string })
   }, [router]);
 
   async function enterImport() {
+    if (isDemoMode()) { router.push("/import"); return; }
     setBusy(true); setError("");
     try {
       await request<Course[]>("/api/private/canvas/courses");
@@ -143,27 +171,21 @@ export default function NookApp({ screen, id }: { screen: Screen; id?: string })
       const supabase = createClient();
       const result = signUp ? await supabase.auth.signUp({ email, password }) : await supabase.auth.signInWithPassword({ email, password });
       if (result.error) throw result.error;
+      localStorage.removeItem(DEMO_MODE_KEY);
       if (signUp) { router.push("/coming-later"); return; }
-      if (sessionStorage.getItem(DEMO_AFTER_AUTH_KEY) === "1") {
-        const demo = await request<{ assignmentId: string }>("/api/private/demo-seed", { method: "POST" });
-        sessionStorage.removeItem(DEMO_AFTER_AUTH_KEY);
-        router.push(`/assignments/${demo.assignmentId}`);
-        router.refresh();
-        return;
-      }
       try { await request<Course[]>("/api/private/canvas/courses"); router.push("/shelf"); }
       catch (e) { if (code(e) === "CANVAS_NOT_AVAILABLE") router.push("/coming-later"); else if (code(e) === "CANVAS_NOT_CONFIGURED") router.push("/connect"); else { setError(message(e)); router.push("/connect"); } }
       router.refresh();
     } catch (e) { setError(message(e)); } finally { setBusy(false); }
   }
   async function resetPassword() { if (!email) { setError("Enter your email first."); return; } setBusy(true); setError(""); try { const { error: e } = await createClient().auth.resetPasswordForEmail(email); if (e) throw e; setInfo("Password reset email sent."); } catch (e) { setError(message(e)); } finally { setBusy(false); } }
-  async function signOut() { await createClient().auth.signOut(); localStorage.removeItem(ACTIVE_KEY); router.push("/"); router.refresh(); }
-  async function tryDemo() { setBusy(true); setError(""); try { const demo = await request<{ assignmentId: string }>("/api/private/demo-seed", { method: "POST" }); router.push(`/assignments/${demo.assignmentId}`); } catch (e) { if (code(e) === "UNAUTHORIZED") { sessionStorage.setItem(DEMO_AFTER_AUTH_KEY, "1"); router.push("/sign-in"); } else setError(message(e)); } finally { setBusy(false); } }
+  async function signOut() { if (!isDemoMode()) await createClient().auth.signOut(); localStorage.removeItem(ACTIVE_KEY); localStorage.removeItem(DEMO_MODE_KEY); router.push("/"); router.refresh(); }
+  async function tryDemo() { localStorage.setItem(DEMO_MODE_KEY, "true"); localStorage.setItem(DEMO_COURSES_KEY, JSON.stringify(demoCourses.map(c => c.id))); localStorage.removeItem(ACTIVE_KEY); router.push("/shelf"); }
   function mutationError(e: unknown) { if (code(e) === "UNAUTHORIZED") router.push("/sign-in"); else setError(message(e)); }
-  async function sync() { setBusy(true); setError(""); setSyncNote(""); try { const result = await request<{ imported: number; updated: number; failures: { courseId: string; message: string }[] }>("/api/private/canvas/sync", json("POST", { courseIds: selected })); setSyncNote(`${result.imported} imported, ${result.updated} updated.`); if (result.failures.length) setError(`${result.failures.length} course${result.failures.length === 1 ? "" : "s"} could not sync: ${result.failures.map(f => f.message).join("; ")}`); else router.push("/shelf"); } catch (e) { mutationError(e); } finally { setBusy(false); } }
-  async function breakdown() { if (!id) return; setBusy(true); setError(""); setDraftNote(""); try { const value = await request<Draft>(`/api/private/assignments/${id}/breakdown`, { method: "POST" }); if (value.steps.length) { setSteps(value.steps.map(s => ({ ...s, done: false, source: "suggested" }))); const hours = estimateHours(value.steps); setEffortMinHours(Math.max(1, hours - 1)); setEffortMaxHours(Math.min(50, hours + 1)); } setDraftNote(value.steps.length ? (value.note || (value.needsReview ? "Review these steps before saving." : "Review and edit these steps.")) : "Nook could not suggest reliable steps from these instructions. Add your own step below; any saved plan is unchanged."); } catch (e) { mutationError(e); } finally { setBusy(false); } }
+  async function sync() { setBusy(true); setError(""); setSyncNote(""); try { if (isDemoMode()) { localStorage.setItem(DEMO_COURSES_KEY, JSON.stringify(selected)); setSyncNote("Demo courses updated."); router.push("/shelf"); return; } const result = await request<{ imported: number; updated: number; failures: { courseId: string; message: string }[] }>("/api/private/canvas/sync", json("POST", { courseIds: selected })); setSyncNote(`${result.imported} imported, ${result.updated} updated.`); if (result.failures.length) setError(`${result.failures.length} course${result.failures.length === 1 ? "" : "s"} could not sync: ${result.failures.map(f => f.message).join("; ")}`); else router.push("/shelf"); } catch (e) { mutationError(e); } finally { setBusy(false); } }
+  async function breakdown() { if (!id) return; setBusy(true); setError(""); setDraftNote(""); try { if (isDemoMode()) { const sample = demoSteps.filter(s => s.assignmentId === id); setSteps(sample.map(s => ({ ...s, done: false }))); setDraftNote("A sample plan for this fictional assignment. Edit it to explore."); return; } const value = await request<Draft>(`/api/private/assignments/${id}/breakdown`, { method: "POST" }); if (value.steps.length) { setSteps(value.steps.map(s => ({ ...s, done: false, source: "suggested" }))); const hours = estimateHours(value.steps); setEffortMinHours(Math.max(1, hours - 1)); setEffortMaxHours(Math.min(50, hours + 1)); } setDraftNote(value.steps.length ? (value.note || (value.needsReview ? "Review these steps before saving." : "Review and edit these steps.")) : "Nook could not suggest reliable steps from these instructions. Add your own step below; any saved plan is unchanged."); } catch (e) { mutationError(e); } finally { setBusy(false); } }
   function updateStep(index: number, patch: Partial<DraftStep>) { setSteps(previous => previous.map((s, i) => i === index ? { ...s, ...patch } : s)); }
-  async function savePlan(thenWork = false, override?: DraftStep[]) { if (!id) return; const plan = override ?? steps; if (plan.length < 1 || plan.length > 6 || plan.some(s => !s.text.trim() || s.minutes < 10 || s.minutes > 480)) { setError("Enter 1–6 steps, each 10–480 minutes, and review the plan."); return; } if (!Number.isInteger(effortMinHours) || !Number.isInteger(effortMaxHours) || effortMinHours < 1 || effortMinHours > 40 || effortMaxHours < effortMinHours || effortMaxHours > 50) { setError("Choose an effort range from 1 to 50 hours."); return; } setBusy(true); setError(""); try { await request(`/api/private/assignments/${id}/plan`, json("PUT", { effortMinMinutes: effortMinHours * 60, effortMaxMinutes: effortMaxHours * 60, steps: plan.map(s => ({ ...s, text: s.text.trim() })) })); setInfo("Plan saved."); await loadDetail(); if (thenWork) router.push(`/current/${id}`); } catch (e) { mutationError(e); } finally { setBusy(false); } }
+  async function savePlan(thenWork = false, override?: DraftStep[]) { if (!id) return; const plan = override ?? steps; if (plan.length < 1 || plan.length > 6 || plan.some(s => !s.text.trim() || s.minutes < 10 || s.minutes > 480)) { setError("Enter 1–6 steps, each 10–480 minutes, and review the plan."); return; } if (!Number.isInteger(effortMinHours) || !Number.isInteger(effortMaxHours) || effortMinHours < 1 || effortMinHours > 40 || effortMaxHours < effortMinHours || effortMaxHours > 50) { setError("Choose an effort range from 1 to 50 hours."); return; } setBusy(true); setError(""); try { if (isDemoMode()) saveDemoRecord(id, { steps: plan.map(s => ({ ...s, text: s.text.trim() })), effortEstimate: { minMinutes: effortMinHours * 60, maxMinutes: effortMaxHours * 60 } }); else await request(`/api/private/assignments/${id}/plan`, json("PUT", { effortMinMinutes: effortMinHours * 60, effortMaxMinutes: effortMaxHours * 60, steps: plan.map(s => ({ ...s, text: s.text.trim() })) })); setInfo("Plan saved."); await loadDetail(); if (thenWork) router.push(`/current/${id}`); } catch (e) { mutationError(e); } finally { setBusy(false); } }
   async function saveThought() { if (!id || !thoughtText.trim()) { setError("Write a short thought first."); return; } setBusy(true); setError(""); try { await request(`/api/private/assignments/${id}/thoughts`, json("POST", { kind: thoughtKind, text: thoughtText.trim() })); setThoughtText(""); setInfo(`${thoughtKind === "idea" ? "Idea" : "Reflection"} saved.`); await loadDetail(); } catch (e) { mutationError(e); } finally { setBusy(false); } }
   async function saveCheckpoint() { if (!id || !checkpointNote.trim()) { setError("Write where you left off."); return; } setBusy(true); setError(""); try { await request(`/api/private/assignments/${id}/checkpoints`, json("POST", { note: checkpointNote.trim(), nextStep: nextStep.trim() })); router.push(`/welcome-back/${id}`); } catch (e) { mutationError(e); } finally { setBusy(false); } }
   async function saveEditedNext() { if (!id) return; setBusy(true); setError(""); try { await request(`/api/private/assignments/${id}/checkpoints`, json("POST", { note: detail?.latestCheckpoint?.note || "Ready to continue", nextStep: nextStep.trim() })); setEditingNext(false); await loadDetail(); } catch (e) { mutationError(e); } finally { setBusy(false); } }
