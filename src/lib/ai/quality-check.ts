@@ -16,7 +16,7 @@ export function inspectDraft(draft: BreakdownDraft, description: string): Qualit
     const qualifiedSource = new RegExp(`\\b${qualifier}\\s+(?:sources?|readings?|articles?|references?)\\b`);
     if (qualifiedSource.test(output) && !qualifiedSource.test(source)) findings.add("unsupported_sources");
   }
-  if (/\b(find|search|locate|research)\b[^.!?]{0,50}\b(sources?|articles?|references?)\b/.test(output)
+  if (/\b(find|search|locate|research)\b[^.!?]{0,140}\b(sources?|articles?|references?)\b/.test(output)
     && !/\b(find|search|locate|research)\b/.test(source)) findings.add("unsupported_sources");
   const countWords = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
   function counts(text: string) {

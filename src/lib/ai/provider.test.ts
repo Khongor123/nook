@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createBreakDown, createProviderGenerator } from "./breakdown";
 import { exampleAssignment, exampleDraft, exampleSteps } from "../planning/demo-example";
+import type { DiagnosticCode } from "./diagnostics";
 
 // Real SDK + fake HTTP transport: no credentials or network calls are used.
 const env = { GROQ_API_KEY: "test-only-not-a-key" };
@@ -26,6 +27,8 @@ test("Groq adapter parses a clear fictional draft using the configured model and
       assert.equal(body.text.format.schema.additionalProperties, false);
       assert.match(body.input[0].content, /untrusted assignment data/);
       assert.match(body.input[0].content, /needsReview/);
+      assert.match(body.input[0].content, /Do not add external\s+research/);
+      assert.match(body.input[0].content, /contain the sum of the step minutes/);
       assert.deepEqual(JSON.parse(body.input[1].content), {
         title: exampleAssignment.title, descriptionText: exampleAssignment.descriptionText,
       });
@@ -74,6 +77,8 @@ function schemaRejection(status = 400, code = "json_validate_failed") {
 
 test("one Groq schema rejection then success makes two requests and returns only an editable draft", async () => {
   let calls = 0;
+  const diagnostics: DiagnosticCode[] = [];
+  const observe = (code: DiagnosticCode) => diagnostics.push(code);
   const savedPlan = Object.freeze({ steps: Object.freeze(structuredClone(exampleSteps)),
     effortMinMinutes: 120, effortMaxMinutes: 180 });
   const assignment = Object.freeze({ ...exampleAssignment, savedPlan });
@@ -84,9 +89,10 @@ test("one Groq schema rejection then success makes two requests and returns only
     assert.equal(init?.method, "POST");
     bodies.push(JSON.parse(String(init?.body)));
     return ++calls === 1 ? schemaRejection() : response(JSON.stringify(exampleDraft));
-  }));
+  }, observe), observe);
   const result = await run(assignment);
   assert.equal(calls, 2);
+  assert.deepEqual(diagnostics, ["groq_schema_retry", "success"]);
   assert.deepEqual(bodies[0], bodies[1]);
   assert.deepEqual(result, exampleDraft);
   assert.deepEqual(assignment, before);
@@ -98,9 +104,12 @@ test("one Groq schema rejection then success makes two requests and returns only
 
 test("two Groq schema rejections make exactly two requests and return the unchanged safe fallback", async () => {
   let calls = 0;
-  const run = createBreakDown(createProviderGenerator(env, async () => { calls++; return schemaRejection(); }));
+  const diagnostics: DiagnosticCode[] = [];
+  const observe = (code: DiagnosticCode) => diagnostics.push(code);
+  const run = createBreakDown(createProviderGenerator(env, async () => { calls++; return schemaRejection(); }, observe), observe);
   assert.deepEqual(await run(exampleAssignment), { steps: [], needsReview: true, note: "Make a manual plan" });
   assert.equal(calls, 2);
+  assert.deepEqual(diagnostics, ["groq_schema_retry", "provider_http_400_schema_rejected"]);
 });
 
 test("authentication or rate-limit failure on the second attempt stops without a third request", async () => {

@@ -42,3 +42,11 @@ test("an ordinary primary-argument step does not imply a new primary-source requ
     { text: "Identify the primary argument and write a summary", minutes: 150 },
   ] }, "Read chapter 3. Write a summary of its main argument."), []);
 });
+
+test("review flags the actual fictional draft's unsupported research despite a long verb-to-source gap", () => {
+  const findings = inspectDraft({ ...exampleDraft, steps: [{
+    text: "Research the selected local historical event using reliable sources, noting key dates, figures, and context.",
+    minutes: 150,
+  }] }, exampleAssignment.descriptionText);
+  assert.ok(findings.includes("unsupported_sources"));
+});

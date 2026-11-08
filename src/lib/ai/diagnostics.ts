@@ -9,7 +9,8 @@ export type DiagnosticCode = "not_configured" | "timeout" | "network"
   | "provider_http_400" | "provider_http_400_schema_rejected"
   | "provider_http_404" | "provider_http_422" | "provider_http_500"
   | "provider_http_502" | "provider_http_503"
-  | "manual_input" | "review_only" | "truncated" | "success" | "cache_hit";
+  | "manual_input" | "review_only" | "truncated" | "success" | "cache_hit"
+  | "groq_schema_retry";
 
 export class AIConfigurationError extends Error {}
 
