@@ -26,6 +26,8 @@ test("Groq adapter parses a clear fictional draft using the configured model and
       assert.equal(body.text.format.schema.additionalProperties, false);
       assert.match(body.input[0].content, /untrusted assignment data/);
       assert.match(body.input[0].content, /needsReview/);
+      assert.match(body.input[0].content, /multiples of 60 minutes/);
+      assert.match(body.input[0].content, /supplied assignment description/);
       assert.deepEqual(JSON.parse(body.input[1].content), {
         title: exampleAssignment.title, descriptionText: exampleAssignment.descriptionText,
       });

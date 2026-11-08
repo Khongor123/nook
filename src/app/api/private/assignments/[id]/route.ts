@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { PrivateAssignmentDetail, Step, Thought, Checkpoint } from "@/lib/types";
 import { apiError, privateContext, privateJson } from "@/lib/private-api";
+import { effectiveEffort } from "@/lib/ai/effort";
 import { getWelcomeBack } from "@/lib/planning/welcome-back";
 
 export async function GET(
@@ -68,9 +69,7 @@ export async function GET(
           createdAt: checkpointResult.data[0].created_at,
         } satisfies Checkpoint
       : null,
-    effortEstimate: row.effort_min_minutes != null && row.effort_max_minutes != null
-      ? { minMinutes: row.effort_min_minutes, maxMinutes: row.effort_max_minutes }
-      : null,
+    effortEstimate: effectiveEffort(row).effortEstimate,
     welcomeBack: { message: "", nextAction: "", ideaText: null },
   };
   detail.welcomeBack = getWelcomeBack(detail.latestCheckpoint, detail.thoughts, detail.steps);

@@ -1,5 +1,7 @@
 import type { Assignment, ShelfCard } from "@/lib/types";
 import { apiError, privateContext, privateJson } from "@/lib/private-api";
+import { effectiveEffort } from "@/lib/ai/effort";
+import { sortByImportance } from "@/lib/planning/importance";
 import { shelfStartBy } from "@/lib/private-planning";
 
 export async function GET() {
@@ -45,13 +47,15 @@ export async function GET() {
       updatedAt: row.source_updated_at ?? row.updated_at,
       status: row.status,
     };
+    const effort = effectiveEffort(row);
     return {
       assignment,
+      ...effort,
       ...shelfStartBy(
         assignment.dueAt,
         assignment.timeZone,
-        row.effort_min_minutes ?? null,
-        row.effort_max_minutes ?? null,
+        effort.effortEstimate?.minMinutes ?? null,
+        effort.effortEstimate?.maxMinutes ?? null,
         new Date(),
         row.unlock_at ?? null,
       ),
@@ -60,5 +64,5 @@ export async function GET() {
     };
   });
 
-  return privateJson(cards);
+  return privateJson(sortByImportance(cards));
 }

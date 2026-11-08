@@ -148,8 +148,9 @@ input[type=checkbox] { width: 24px; height: 24px; flex: none; accent-color: #8E7
 .kind-picker button { flex: 1; min-height: 44px; border: 1px solid #EFE2D3; border-radius: 999px; background: white; font-size: 13px; font-weight: 700; }
 .kind-picker button.active { background: var(--lavender); color: #3B3149; }
 .saved-thoughts { margin-top: 18px; color: var(--muted); font-size: 13px; }
-.saved-thoughts summary { cursor: pointer; font-weight: 800; }
-.saved-thoughts p { margin: 10px 0; }
+.saved-thoughts h3 { margin: 0 0 10px; color: var(--ink); font-size: 15px; font-weight: 800; }
+.saved-thoughts ul { list-style: none; margin: 0; padding: 0; }
+.saved-thoughts li { margin: 10px 0; overflow-wrap: anywhere; }
 .checkpoint-form { display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
 .checkpoint-form label, .edit-next label { font-size: 13px; font-weight: 800; }
 .return-screen .phone-content > p { color: var(--muted); margin: 12px 0 28px; }
