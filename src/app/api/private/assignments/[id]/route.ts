@@ -38,6 +38,8 @@ export async function GET(
       id: row.id, userId: row.user_id, canvasCourseId: row.canvas_course_id,
       canvasAssignmentId: row.canvas_assignment_id, courseName: row.course_name,
       title: row.title, descriptionText: row.description_text, dueAt: row.due_at,
+      canvasUrl: row.canvas_url, unlockAt: row.unlock_at,
+      sourceAvailable: row.source_available,
       timeZone: row.time_zone, updatedAt: row.source_updated_at ?? row.updated_at,
       status: row.status,
     },

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CanvasError, canvasConfig, htmlToPlainText, listCanvasAssignments, listCanvasCourses } from "@/lib/canvas";
+import { CanvasError, canvasAssignmentUrl, canvasConfig, htmlToPlainText, listCanvasAssignments, listCanvasCourses } from "@/lib/canvas";
 import { apiError, privateContext, privateJson } from "@/lib/private-api";
 
 const requestSchema = z.object({ courseIds: z.array(z.string().regex(/^\d+$/)).min(1).max(20) });
@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     let imported = 0;
     let updated = 0;
     const failures: { courseId: string; code: string; message: string }[] = [];
+    const syncedCourses: { courseId: string; lastSyncedAt: string; unavailable: number }[] = [];
 
     for (const course of selected) {
       if (!course) continue;
@@ -55,6 +56,10 @@ export async function POST(request: Request) {
             title: item.name,
             description_text: htmlToPlainText(item.description ?? "").slice(0, 30000),
             due_at: item.due_at ?? null,
+            unlock_at: item.unlock_at ?? null,
+            canvas_url: canvasAssignmentUrl(item.html_url, config.base),
+            submission_types: item.submission_types ?? [],
+            source_available: true,
             time_zone: course.time_zone ?? "UTC",
             source_updated_at: item.updated_at ?? null,
             status: savedStatus.get(item.id) ?? "open",
@@ -63,13 +68,33 @@ export async function POST(request: Request) {
           if (savedStatus.has(item.id)) updated++;
           else imported++;
         }
+
+        const importedIds = assignments.map((item) => item.id);
+        let unavailable = 0;
+        for (const oldId of savedStatus.keys()) {
+          if (importedIds.includes(oldId)) continue;
+          const stale = await supabase.from("assignments")
+            .update({ source_available: false })
+            .eq("user_id", userId)
+            .eq("canvas_course_id", course.id)
+            .eq("canvas_assignment_id", oldId);
+          if (stale.error) throw new CanvasError("SAVE_FAILED", "Could not mark unavailable assignments", 500, true);
+          unavailable++;
+        }
+        const lastSyncedAt = new Date().toISOString();
+        const syncSave = await supabase.from("courses")
+          .update({ last_synced_at: lastSyncedAt })
+          .eq("user_id", userId)
+          .eq("canvas_course_id", course.id);
+        if (syncSave.error) throw new CanvasError("SAVE_FAILED", "Could not save sync time", 500, true);
+        syncedCourses.push({ courseId: course.id, lastSyncedAt, unavailable });
       } catch (error) {
         const failure = error instanceof CanvasError ? error : new CanvasError("SYNC_FAILED", "Could not sync course", 500, true);
         failures.push({ courseId: course.id, code: failure.code, message: failure.message });
       }
     }
 
-    return privateJson({ imported, updated, failures, syncedAt: new Date().toISOString() }, failures.length ? 207 : 200);
+    return privateJson({ imported, updated, failures, syncedCourses, syncedAt: new Date().toISOString() }, failures.length ? 207 : 200);
   } catch (error) {
     if (error instanceof CanvasError) return apiError(error.status, error.code, error.message, error.retryable);
     return apiError(500, "SYNC_FAILED", "Could not sync Canvas", true);

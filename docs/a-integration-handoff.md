@@ -6,11 +6,17 @@ The private API now connects C's planning functions to saved Nook assignments. A
 
 Migration `supabase/migrations/0002_assignment_plans.sql` was applied once to the shared Nook Supabase project on November 7, 2026. Run it after `0001_nook_core.sql` only when setting up a different project. It adds an editable effort range to assignments and the transaction-safe `save_assignment_plan` function. Do not rerun either migration in the shared project.
 
+Migration `supabase/migrations/0003_canvas_source_state.sql` adds Canvas source links, unlock dates, submission types, a source-availability flag, and a persisted per-course sync time. It was applied once to the shared Nook Supabase project on November 7, 2026; do not rerun it there. Run it once after 0002 in any different project. The private import and course routes require it.
+
 ## Private route contracts
 
 ### `GET /api/private/shelf`
 
 Returns `ShelfCard[]` from `src/lib/types.ts`. Each card includes the original `assignment.dueAt`, plus `startByAt`, `startByReason`, and `startByState`. `startByState` is `needs_plan` for an upcoming assignment without a saved effort estimate; no date is invented. After a plan is saved, the midpoint of its editable effort range feeds C's start-by rule.
+
+Imported assignments also include `canvasUrl`, `unlockAt`, and `sourceAvailable`. `canvasUrl` is an HTTPS link on the configured Canvas host, or `null`; use it for “Open in Canvas.” A suggested start is clamped to `unlockAt` when present. If the Canvas assignment disappears from a fully successful sync, `sourceAvailable` becomes `false` while local steps and notes stay saved.
+
+`GET /api/private/canvas/courses` adds `lastSyncedAt: string | null` to each course. `POST /api/private/canvas/sync` retains `imported`, `updated`, `failures`, and `syncedAt`, and adds `syncedCourses: { courseId, lastSyncedAt, unavailable }[]`. A course gets a new `lastSyncedAt` only after all its assignments are fetched and saved. Transient Canvas 429/5xx and connection errors are retried at most twice before the per-course failure is reported.
 
 ### `GET /api/private/assignments/:id`
 

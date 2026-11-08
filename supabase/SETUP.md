@@ -6,3 +6,5 @@
 4. Once the project and tables are ready, add Supabase sign-in and authenticated database reads. Keep the existing demo routes available for B's UI work.
 
 The SQL uses row-level security: a signed-in student can read and write only their own rows. Do not put a Supabase secret key in browser code or in chat.
+
+For a new project, apply `0002_assignment_plans.sql` and then `0003_canvas_source_state.sql` after `0001_nook_core.sql`. The shared Nook project already has all three migrations; do not rerun them there.

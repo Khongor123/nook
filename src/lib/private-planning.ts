@@ -9,6 +9,7 @@ export function shelfStartBy(
   minMinutes: number | null,
   maxMinutes: number | null,
   now = new Date(),
+  unlockAt: string | null = null,
 ): StartBy {
   if (!dueAt) return { startByAt: null, startByReason: "No Canvas due date", startByState: "no_due_date" };
   const due = new Date(dueAt);
@@ -21,6 +22,22 @@ export function shelfStartBy(
   }
   try {
     const result = getStartBy({ dueAt, timeZone }, Math.ceil((minMinutes + maxMinutes) / 2), now);
+    if (result.startByAt && unlockAt) {
+      const unlock = new Date(unlockAt);
+      if (!Number.isFinite(unlock.getTime())) {
+        return { startByAt: null, startByReason: "Check the Canvas unlock date", startByState: "unavailable" };
+      }
+      if (unlock > due) {
+        return { startByAt: null, startByReason: "Canvas unlocks after the due date; check the assignment", startByState: "unavailable" };
+      }
+      if (unlock.getTime() > new Date(result.startByAt).getTime()) {
+        return {
+          startByAt: unlock.toISOString(),
+          startByReason: "Suggested start moved to when Canvas unlocks this assignment. Check the Canvas due date separately.",
+          startByState: unlock > now ? "suggested" : "start_now",
+        };
+      }
+    }
     return { startByAt: result.startByAt, startByReason: result.reason, startByState: result.state };
   } catch {
     return { startByAt: null, startByReason: "Check the course time zone", startByState: "unavailable" };

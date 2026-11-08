@@ -15,6 +15,9 @@ export interface Assignment {
   // Plain text from Canvas, not raw HTML.
   descriptionText: string;
   dueAt: ISODateString | null;
+  canvasUrl?: string | null;
+  unlockAt?: ISODateString | null;
+  sourceAvailable?: boolean;
   timeZone: string;
   updatedAt: ISODateString;
   status: AssignmentStatus;

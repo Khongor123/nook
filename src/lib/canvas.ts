@@ -11,6 +11,9 @@ const assignmentSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable().optional(),
   due_at: z.string().nullable().optional(),
+  unlock_at: z.string().nullable().optional(),
+  html_url: z.string().nullable().optional(),
+  submission_types: z.array(z.string()).nullable().optional(),
   updated_at: z.string().nullable().optional(),
   published: z.boolean().optional(),
 });
@@ -55,11 +58,58 @@ function nextLink(header: string | null) {
   return part?.match(/<([^>]+)>/)?.[1] ?? null;
 }
 
+export function canvasAssignmentUrl(raw: string | null | undefined, base: URL): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.origin === base.origin && !url.username && !url.password
+      ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function fetchCanvasPage(
+  config: ReturnType<typeof canvasConfig>,
+  url: URL,
+  fetcher: typeof fetch,
+  wait: (ms: number) => Promise<void>,
+) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let response: Response;
+    try {
+      response = await fetcher(url, {
+        headers: { Authorization: `Bearer ${config.token}`, Accept: "application/json+canvas-string-ids" },
+        cache: "no-store",
+        redirect: "manual",
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch {
+      if (attempt === 2) throw new CanvasError("CANVAS_UNREACHABLE", "Could not reach Canvas", 502, true);
+      await wait(250 * (attempt + 1));
+      continue;
+    }
+    if ((response.status === 429 || response.status >= 500) && attempt < 2) {
+      const seconds = Number(response.headers.get("retry-after"));
+      const delay = Number.isFinite(seconds) && seconds > 0
+        ? Math.min(seconds * 1000, 2000) : 250 * (attempt + 1);
+      await wait(delay);
+      continue;
+    }
+    return response;
+  }
+  throw new CanvasError("CANVAS_UNREACHABLE", "Could not reach Canvas", 502, true);
+}
+
 export async function canvasPages<T>(
   config: ReturnType<typeof canvasConfig>,
   path: string,
   schema: z.ZodType<T>,
   maxItems: number,
+  fetcher: typeof fetch = fetch,
+  wait: (ms: number) => Promise<void> = pause,
 ): Promise<T[]> {
   let url: URL | null = new URL(path, config.base);
   const result: T[] = [];
@@ -72,17 +122,7 @@ export async function canvasPages<T>(
     if (seen.has(url.href)) throw new CanvasError("CANVAS_BAD_PAGE", "Canvas pagination looped", 502);
     seen.add(url.href);
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        headers: { Authorization: `Bearer ${config.token}`, Accept: "application/json+canvas-string-ids" },
-        cache: "no-store",
-        redirect: "manual",
-        signal: AbortSignal.timeout(10000),
-      });
-    } catch {
-      throw new CanvasError("CANVAS_UNREACHABLE", "Could not reach Canvas", 502, true);
-    }
+    const response = await fetchCanvasPage(config, url, fetcher, wait);
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
