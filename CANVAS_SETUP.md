@@ -17,3 +17,5 @@ This demo uses one presenter-owned Canvas token on the server. Sign in to Nook w
 The URL must be the HTTPS Canvas origin, not an API path. This importer only reads Canvas courses and assignments. It never submits or changes coursework in Canvas. Existing Nook thoughts, steps, checkpoints, and local status remain attached to their assignments on re-sync. A course failure is reported in the result; already imported assignments are retained.
 
 The server-held personal token is suitable for a single presenter demo. A multi-user release needs per-user Canvas OAuth and a secure token store.
+
+Before running this importer in a fresh database, apply migrations 0001, 0002, then 0003 once each. Migration 0003 stores original Canvas assignment links, unlock dates, source availability, and successful course sync times. The importer never deletes a student's saved plan, thoughts, or checkpoint when an assignment disappears from Canvas.
