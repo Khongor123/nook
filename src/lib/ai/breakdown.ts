@@ -107,7 +107,7 @@ export function createProviderGenerator(
       maxRetries: 0,
       ...(fetcher ? { fetch: fetcher } : {}),
     });
-    const response = await client.responses.parse({
+    const request = () => client.responses.parse({
       model,
       ...(!groqKey ? { store: false } : {}),
       input: [
@@ -115,6 +115,16 @@ export function createProviderGenerator(
         { role: "user", content: JSON.stringify(source) },
       ],
       text: { format: zodTextFormat(breakdownOutputSchema, "assignment_breakdown") },
+    });
+    // One extra attempt only for Groq's intermittent schema-generation rejection.
+    // SDK retries stay disabled. A second failure escapes to the safe fallback;
+    // this catch does not wrap the second request or retry other error classes.
+    const response = await request().catch((error: unknown) => {
+      if (groqKey && error instanceof OpenAI.APIError
+        && error.status === 400 && error.code === "json_validate_failed") {
+        return request();
+      }
+      throw error;
     });
     return {
       status: response.status,

@@ -45,7 +45,7 @@ async function main() {
     assert.deepEqual(item.assignment, before, "Planning must not mutate Canvas data");
     if (!passed) failed = true;
   }
-  console.log(failed ? "FAILED: inspect the safe diagnostic categories above; no automatic rerun was made."
+  console.log(failed ? "FAILED: inspect the safe diagnostic categories above; Groq schema-rejection retries are limited to one extra attempt."
     : "Checks passed. Grounding checks are heuristic; human review is still needed.");
   if (failed) process.exitCode = 1;
 }
