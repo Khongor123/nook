@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createBreakDown, createProviderGenerator } from "./breakdown";
-import { exampleAssignment, exampleDraft } from "../planning/demo-example";
+import { exampleAssignment, exampleDraft, exampleSteps } from "../planning/demo-example";
 
 // Real SDK + fake HTTP transport: no credentials or network calls are used.
 const env = { GROQ_API_KEY: "test-only-not-a-key" };
@@ -68,6 +68,67 @@ test("Groq 401, 429, and 5xx return manual planning without automatic retries", 
   }
 });
 
+function schemaRejection(status = 400, code = "json_validate_failed") {
+  return Response.json({ error: { code, message: "Fictional private error detail" } }, { status });
+}
+
+test("one Groq schema rejection then success makes two requests and returns only an editable draft", async () => {
+  let calls = 0;
+  const savedPlan = Object.freeze({ steps: Object.freeze(structuredClone(exampleSteps)),
+    effortMinMinutes: 120, effortMaxMinutes: 180 });
+  const assignment = Object.freeze({ ...exampleAssignment, savedPlan });
+  const before = structuredClone(assignment);
+  const bodies: unknown[] = [];
+  const run = createBreakDown(createProviderGenerator(env, async (url, init) => {
+    assert.equal(String(url), "https://api.groq.com/openai/v1/responses");
+    assert.equal(init?.method, "POST");
+    bodies.push(JSON.parse(String(init?.body)));
+    return ++calls === 1 ? schemaRejection() : response(JSON.stringify(exampleDraft));
+  }));
+  const result = await run(assignment);
+  assert.equal(calls, 2);
+  assert.deepEqual(bodies[0], bodies[1]);
+  assert.deepEqual(result, exampleDraft);
+  assert.deepEqual(assignment, before);
+  result.steps[0].text = "Student draft edit";
+  assert.deepEqual(assignment, before); // No saved steps/effort or Canvas due date are changed.
+  assert.deepEqual(await run(assignment), exampleDraft);
+  assert.equal(calls, 2); // Cache the success, never a saved plan mutation.
+});
+
+test("two Groq schema rejections make exactly two requests and return the unchanged safe fallback", async () => {
+  let calls = 0;
+  const run = createBreakDown(createProviderGenerator(env, async () => { calls++; return schemaRejection(); }));
+  assert.deepEqual(await run(exampleAssignment), { steps: [], needsReview: true, note: "Make a manual plan" });
+  assert.equal(calls, 2);
+});
+
+test("authentication or rate-limit failure on the second attempt stops without a third request", async () => {
+  for (const status of [401, 429]) {
+    let calls = 0;
+    const run = createBreakDown(createProviderGenerator(env, async () => {
+      return ++calls === 1 ? schemaRejection() : schemaRejection(status);
+    }));
+    assert.deepEqual(await run(exampleAssignment), { steps: [], needsReview: true, note: "Make a manual plan" });
+    assert.equal(calls, 2);
+  }
+});
+
+test("schema-like errors do not retry unless provider, status and code all match", async () => {
+  for (const [config, status, code] of [
+    [env, 401, "json_validate_failed"], [env, 429, "json_validate_failed"],
+    [env, 400, "invalid_request_error"], [env, 422, "json_validate_failed"],
+    [{ OPENAI_API_KEY: "test-only", OPENAI_MODEL: "test-model" }, 400, "json_validate_failed"],
+  ] as const) {
+    let calls = 0;
+    const run = createBreakDown(createProviderGenerator(config, async () => {
+      calls++; return schemaRejection(status, code);
+    }));
+    assert.deepEqual(await run(exampleAssignment), { steps: [], needsReview: true, note: "Make a manual plan" });
+    assert.equal(calls, 1);
+  }
+});
+
 test("network/timeout errors, incomplete output, malformed JSON, and refusal are never partial plans", async () => {
   const transports: (typeof fetch)[] = [
     async () => { throw new DOMException("Timed out", "TimeoutError"); },
@@ -82,8 +143,12 @@ test("network/timeout errors, incomplete output, malformed JSON, and refusal are
     }),
   ];
   for (const transport of transports) {
-    const result = await createBreakDown(createProviderGenerator(env, transport))(exampleAssignment);
+    let calls = 0;
+    const result = await createBreakDown(createProviderGenerator(env, async (...args) => {
+      calls++; return transport(...args);
+    }))(exampleAssignment);
     assert.deepEqual(result, { steps: [], needsReview: true, note: "Make a manual plan" });
+    assert.equal(calls, 1);
   }
 });
 
@@ -93,7 +158,7 @@ test("a vague assignment keeps the model's review warning rather than masqueradi
     effortMinMinutes: 10, effortMaxMinutes: 20, needsReview: true,
     note: "The prompt does not specify a topic or deliverable. Review Canvas before planning.",
   }))));
-  const result = await run({ ...exampleAssignment, descriptionText: "Prepare something about history for class." });
+  const result = await run({ ...exampleAssignment, descriptionText: "Prepare for discussion." });
   assert.equal(result.needsReview, true);
   assert.equal(result.steps.length, 1);
 });

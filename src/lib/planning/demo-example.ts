@@ -49,7 +49,7 @@ export const vagueExampleAssignment: Assignment = {
 export const exampleReviewDraft: BreakdownDraft = {
   steps: [{ text: "Open Canvas and check the full instructions", minutes: 10 }],
   effortMinMinutes: 10, effortMaxMinutes: 20, needsReview: true,
-  note: "The prompt does not specify a topic or deliverable. Review Canvas before planning.",
+  note: "Review the Canvas prompt before planning. This estimate is only for checking the instructions.",
 };
 export const exampleManualFallback: BreakdownResult = {
   steps: [], needsReview: true, note: "Make a manual plan",
